@@ -36,7 +36,7 @@ function ChatDashboard() {
           onClick={handleLogout}
           className="rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
-          Logout.
+          Logout..
         </button>
       </div>
 
