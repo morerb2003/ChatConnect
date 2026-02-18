@@ -1,17 +1,18 @@
+const TOKEN_KEY = 'token'
+const USER_KEY = 'user'
+
 export const setToken = (token) => {
-  localStorage.setItem('token', token)
+  localStorage.setItem(TOKEN_KEY, token)
 }
 
-export const getToken = () => {
-  return localStorage.getItem('token')
-}
+export const getToken = () => localStorage.getItem(TOKEN_KEY)
 
 export const setUser = (user) => {
-  localStorage.setItem('user', JSON.stringify(user))
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
 export const getUser = () => {
-  const raw = localStorage.getItem('user')
+  const raw = localStorage.getItem(USER_KEY)
   if (!raw) return null
 
   try {
@@ -21,7 +22,7 @@ export const getUser = () => {
   }
 }
 
-export const removeToken = () => {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
+export const clearAuthStorage = () => {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
 }

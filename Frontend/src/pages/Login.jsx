@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import AuthLayout from '../components/AuthLayout'
+import useAuth from '../hooks/useAuth'
 import InputField from '../components/InputField'
-import api from '../services/api'
-import { setToken, setUser } from '../utils/auth'
+import { loginRequest } from '../services/authService'
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -26,6 +26,7 @@ const validate = (formData) => {
 
 function Login() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [formData, setFormData] = useState({
     email: localStorage.getItem('rememberedEmail') || '',
     password: '',
@@ -57,21 +58,12 @@ function Login() {
 
     try {
       setLoading(true)
-      const response = await api.post('/auth/login', {
+      const authData = await loginRequest({
         email: formData.email.trim(),
         password: formData.password,
       })
 
-      const user = {
-        userId: response.data.userId,
-        name: response.data.name,
-        email: response.data.email,
-      }
-
-      localStorage.setItem('token', response.data.token)
-      localStorage.setItem('user', JSON.stringify(user))
-      setToken(response.data.token)
-      setUser(user)
+      login(authData)
 
       if (formData.rememberMe) {
         localStorage.setItem('rememberedEmail', formData.email.trim())

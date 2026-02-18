@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import AuthLayout from '../components/AuthLayout'
 import InputField from '../components/InputField'
-import api from '../services/api'
+import { registerRequest } from '../services/authService'
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -102,7 +102,7 @@ function Register() {
 
     try {
       setLoading(true)
-      await api.post('/auth/register', {
+      await registerRequest({
         name: formData.fullName.trim(),
         email: formData.email.trim(),
         password: formData.password,
