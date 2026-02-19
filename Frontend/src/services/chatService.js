@@ -1,7 +1,7 @@
 import api from './api'
 
 export const fetchSidebarUsers = async () => {
-  const response = await api.get('/users')
+  const response = await api.get('/chat/users')
   return response.data
 }
 
@@ -11,7 +11,7 @@ export const getOrCreateRoom = async (participantId) => {
 }
 
 export const fetchRoomMessages = async (chatRoomId, page = 0, size = 30) => {
-  const response = await api.get(`/messages/${chatRoomId}`, {
+  const response = await api.get(`/chat/rooms/${chatRoomId}/messages`, {
     params: { page, size },
   })
   return response.data

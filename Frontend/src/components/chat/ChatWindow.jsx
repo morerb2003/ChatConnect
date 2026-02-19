@@ -4,6 +4,7 @@ function ChatWindow({
   activeUser,
   messages,
   draft,
+  isConnected,
   onDraftChange,
   onSend,
   onLoadOlder,
@@ -71,7 +72,7 @@ function ChatWindow({
         />
         <button
           type="submit"
-          disabled={!draft.trim()}
+          disabled={!draft.trim() || !isConnected}
           className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
         >
           Send

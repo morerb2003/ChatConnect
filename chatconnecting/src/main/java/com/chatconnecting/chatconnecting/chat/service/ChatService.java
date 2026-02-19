@@ -19,12 +19,17 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class ChatService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
     private static final List<MessageStatus> UNREAD_STATUSES = List.of(MessageStatus.SENT, MessageStatus.DELIVERED);
 
@@ -113,10 +118,24 @@ public class ChatService {
         Long[] normalizedPair = normalizePair(currentUser.getId(), participantId);
 
         return chatRoomRepository.findByUserOneIdAndUserTwoId(normalizedPair[0], normalizedPair[1])
-                .orElseGet(() -> chatRoomRepository.save(ChatRoom.builder()
-                        .userOne(normalizedPair[0].equals(currentUser.getId()) ? currentUser : participant)
-                        .userTwo(normalizedPair[1].equals(currentUser.getId()) ? currentUser : participant)
-                        .build()));
+                .orElseGet(() -> createRoomWithRaceProtection(currentUser, participant, normalizedPair));
+    }
+
+    private ChatRoom createRoomWithRaceProtection(User currentUser, User participant, Long[] normalizedPair) {
+        ChatRoom candidate = ChatRoom.builder()
+                .userOne(normalizedPair[0].equals(currentUser.getId()) ? currentUser : participant)
+                .userTwo(normalizedPair[1].equals(currentUser.getId()) ? currentUser : participant)
+                .build();
+
+        try {
+            return chatRoomRepository.saveAndFlush(candidate);
+        } catch (DataIntegrityViolationException ex) {
+            // Another concurrent request likely created the same normalized pair.
+            log.debug("Detected concurrent chat room creation for pair=({},{}), refetching existing room",
+                    normalizedPair[0], normalizedPair[1]);
+            return chatRoomRepository.findByUserOneIdAndUserTwoId(normalizedPair[0], normalizedPair[1])
+                    .orElseThrow(() -> ex);
+        }
     }
 
     @Transactional(readOnly = true)

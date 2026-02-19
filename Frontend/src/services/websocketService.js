@@ -1,6 +1,10 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 
+export const MAX_RECONNECT_ATTEMPTS = 5
+const BASE_RECONNECT_DELAY_MS = 1000
+const MAX_RECONNECT_DELAY_MS = 15000
+
 const parsePayload = (frame) => {
   try {
     return JSON.parse(frame.body)
@@ -9,20 +13,47 @@ const parsePayload = (frame) => {
   }
 }
 
+const readStompErrorMessage = (frame) => {
+  const headerMessage = frame?.headers?.message || ''
+  const bodyMessage = frame?.body || ''
+  return `${headerMessage} ${bodyMessage}`.trim()
+}
+
+export const shouldTreatAsFatalConnectionError = (value) => {
+  const message = String(value || '').toLowerCase()
+  return (
+    /(^|\D)(401|403|500)(\D|$)/.test(message) ||
+    message.includes('unauthorized') ||
+    message.includes('forbidden') ||
+    message.includes('internal server error')
+  )
+}
+
+export const isServer500Close = (event) => {
+  const reason = event?.reason || ''
+  return /(^|\D)500(\D|$)|internal server error/i.test(reason)
+}
+
+export const getReconnectDelayMs = (attempt) => {
+  const cappedAttempt = Math.max(1, Number(attempt) || 1)
+  return Math.min(BASE_RECONNECT_DELAY_MS * 2 ** (cappedAttempt - 1), MAX_RECONNECT_DELAY_MS)
+}
+
 export const createChatSocketClient = ({
   token,
   onConnect,
-  onError,
-  onDisconnect,
+  onStompError,
+  onWebSocketError,
+  onWebSocketClose,
 }) => {
   const wsBaseUrl = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws'
 
   return new Client({
-    webSocketFactory: () => new SockJS(`${wsBaseUrl}?token=${encodeURIComponent(token)}`),
+    webSocketFactory: () => new SockJS(wsBaseUrl),
     connectHeaders: {
       Authorization: `Bearer ${token}`,
     },
-    reconnectDelay: 5000,
+    reconnectDelay: 0,
     heartbeatIncoming: 10000,
     heartbeatOutgoing: 10000,
     debug: () => {},
@@ -30,15 +61,15 @@ export const createChatSocketClient = ({
       onConnect?.()
     },
     onStompError: (frame) => {
-      onError?.(frame?.headers?.message || 'WebSocket error')
+      const message = readStompErrorMessage(frame)
+      onStompError?.(frame, message || 'WebSocket STOMP error')
     },
-    onWebSocketError: () => {
-      onError?.('WebSocket transport error')
+    onWebSocketError: (event) => {
+      onWebSocketError?.(event)
     },
-    onWebSocketClose: () => {
-      onDisconnect?.()
+    onWebSocketClose: (event) => {
+      onWebSocketClose?.(event)
     },
-    beforeConnect: async () => {},
   })
 }
 

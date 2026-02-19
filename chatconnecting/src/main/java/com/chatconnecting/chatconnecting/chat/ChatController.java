@@ -4,10 +4,13 @@ import com.chatconnecting.chatconnecting.chat.dto.ChatRoomResponse;
 import com.chatconnecting.chatconnecting.chat.dto.UserChatSummaryResponse;
 import com.chatconnecting.chatconnecting.chat.service.ChatService;
 import com.chatconnecting.chatconnecting.common.dto.MessageResponse;
+import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
 import com.chatconnecting.chatconnecting.message.dto.MessagePageResponse;
 import com.chatconnecting.chatconnecting.message.service.MessageService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,12 +25,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ChatController {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
+
     private final ChatService chatService;
     private final MessageService messageService;
 
     @GetMapping("/users")
     public ResponseEntity<List<UserChatSummaryResponse>> getChatUsers(Authentication authentication) {
-        return ResponseEntity.ok(chatService.getSidebarUsers(authentication.getName()));
+        String email = requireAuthEmail(authentication);
+        log.debug("Loading chat sidebar users for {}", email);
+        return ResponseEntity.ok(chatService.getSidebarUsers(email));
     }
 
     @PostMapping("/rooms/{participantId}")
@@ -35,7 +42,9 @@ public class ChatController {
             @PathVariable Long participantId,
             Authentication authentication
     ) {
-        return ResponseEntity.ok(chatService.getOrCreateChatRoom(authentication.getName(), participantId));
+        String email = requireAuthEmail(authentication);
+        log.debug("Get/create room request: requester={}, participantId={}", email, participantId);
+        return ResponseEntity.ok(chatService.getOrCreateChatRoom(email, participantId));
     }
 
     @GetMapping("/rooms/{chatRoomId}/messages")
@@ -45,7 +54,9 @@ public class ChatController {
             @RequestParam(defaultValue = "30") int size,
             Authentication authentication
     ) {
-        return ResponseEntity.ok(messageService.getChatHistory(authentication.getName(), chatRoomId, page, size));
+        String email = requireAuthEmail(authentication);
+        log.debug("Loading room messages: requester={}, roomId={}, page={}, size={}", email, chatRoomId, page, size);
+        return ResponseEntity.ok(messageService.getChatHistory(email, chatRoomId, page, size));
     }
 
     @PostMapping("/rooms/{chatRoomId}/read")
@@ -53,7 +64,16 @@ public class ChatController {
             @PathVariable Long chatRoomId,
             Authentication authentication
     ) {
-        int updatedCount = messageService.markMessagesAsRead(authentication.getName(), chatRoomId);
+        String email = requireAuthEmail(authentication);
+        int updatedCount = messageService.markMessagesAsRead(email, chatRoomId);
+        log.debug("Marked messages as read: requester={}, roomId={}, updatedCount={}", email, chatRoomId, updatedCount);
         return ResponseEntity.ok(new MessageResponse(updatedCount + " messages marked as read"));
+    }
+
+    private String requireAuthEmail(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new ForbiddenOperationException("Unauthorized request");
+        }
+        return authentication.getName();
     }
 }

@@ -19,6 +19,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class MessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(MessageService.class);
 
     private final MessageRepository messageRepository;
     private final ChatService chatService;
@@ -93,11 +97,17 @@ public class MessageService {
                 .deliveredAt(receiverOnline ? now : null)
                 .build();
 
-        Message saved = messageRepository.save(message);
+        Message saved = messageRepository.saveAndFlush(message);
         ChatMessageResponse payload = toResponse(saved, request.getClientMessageId());
+        log.debug("Persisted message id={} room={} sender={} receiver={}",
+                payload.getId(),
+                payload.getChatRoomId(),
+                payload.getSenderId(),
+                payload.getReceiverId());
 
         messagingTemplate.convertAndSendToUser(sender.getEmail(), "/queue/messages", payload);
         messagingTemplate.convertAndSendToUser(receiver.getEmail(), "/queue/messages", payload);
+        log.debug("Broadcasted message id={} to sender={} and receiver={}", payload.getId(), sender.getEmail(), receiver.getEmail());
 
         return payload;
     }

@@ -48,6 +48,7 @@ function ChatDashboard() {
   const activeUserIdRef = useRef(null)
   const activeRoomIdRef = useRef(null)
   const shouldAutoScrollRef = useRef(true)
+  const openingConversationRef = useRef(new Set())
 
   useEffect(() => {
     activeUserIdRef.current = activeUserId
@@ -251,6 +252,12 @@ function ChatDashboard() {
 
   const openConversation = useCallback(
     async (chatUser) => {
+      if (!chatUser?.userId) return
+      if (openingConversationRef.current.has(chatUser.userId)) {
+        return
+      }
+      openingConversationRef.current.add(chatUser.userId)
+
       try {
         setTypingUserId(null)
         setActiveUserId(chatUser.userId)
@@ -266,6 +273,8 @@ function ChatDashboard() {
         await markRoomAsRead(room.chatRoomId)
       } catch (error) {
         toast.error(error?.response?.data?.message || 'Failed to open conversation')
+      } finally {
+        openingConversationRef.current.delete(chatUser.userId)
       }
     },
     [loadRoomHistory],
@@ -328,8 +337,24 @@ function ChatDashboard() {
     event.preventDefault()
     const content = draft.trim()
     if (!content || !activeUser || !activeRoomId) return
+    if (!isConnected) {
+      toast.error('Waiting for live connection. Please try again.')
+      return
+    }
 
     const clientMessageId = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const published = sendMessage({
+      chatRoomId: activeRoomId,
+      receiverId: activeUser.userId,
+      content,
+      clientMessageId,
+    })
+
+    if (!published) {
+      toast.error('Connection lost. Message not sent.')
+      return
+    }
+
     const optimisticMessage = {
       id: null,
       clientMessageId,
@@ -369,17 +394,6 @@ function ChatDashboard() {
       receiverId: activeUser.userId,
       typing: false,
     })
-
-    const published = sendMessage({
-      chatRoomId: activeRoomId,
-      receiverId: activeUser.userId,
-      content,
-      clientMessageId,
-    })
-
-    if (!published) {
-      toast.error('Connection lost. Message not sent.')
-    }
   }
 
   const loadOlderMessages = async () => {
@@ -421,6 +435,7 @@ function ChatDashboard() {
           activeUser={activeUser}
           messages={activeMessages}
           draft={draft}
+          isConnected={isConnected}
           onDraftChange={handleDraftChange}
           onSend={handleSendMessage}
           onLoadOlder={loadOlderMessages}
