@@ -4,10 +4,30 @@ import SockJS from 'sockjs-client'
 export const MAX_RECONNECT_ATTEMPTS = 5
 const BASE_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 15000
+export const USER_MESSAGES_DESTINATION = '/user/queue/messages'
+export const USER_TYPING_DESTINATION = '/user/queue/typing'
+export const USER_READ_RECEIPTS_DESTINATION = '/user/queue/read-receipts'
+export const TOPIC_PRESENCE_DESTINATION = '/topic/presence'
+
+const parseNestedJson = (value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  if (!trimmed) return value
+  const looksLikeJson =
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  if (!looksLikeJson) return value
+
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
 
 const parsePayload = (frame) => {
   try {
-    return JSON.parse(frame.body)
+    return parseNestedJson(JSON.parse(frame.body))
   } catch {
     return null
   }
@@ -84,10 +104,10 @@ export const attachSubscriptions = (client, handlers) => {
     )
   }
 
-  subscribe('/user/queue/messages', handlers.onMessage)
-  subscribe('/user/queue/typing', handlers.onTyping)
-  subscribe('/user/queue/read-receipts', handlers.onReadReceipt)
-  subscribe('/topic/presence', handlers.onPresence)
+  subscribe(USER_MESSAGES_DESTINATION, handlers.onMessage)
+  subscribe(USER_TYPING_DESTINATION, handlers.onTyping)
+  subscribe(USER_READ_RECEIPTS_DESTINATION, handlers.onReadReceipt)
+  subscribe(TOPIC_PRESENCE_DESTINATION, handlers.onPresence)
 
   return () => {
     subscriptions.forEach((subscription) => subscription.unsubscribe())

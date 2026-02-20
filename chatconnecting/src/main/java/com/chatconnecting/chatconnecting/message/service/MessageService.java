@@ -70,8 +70,8 @@ public class MessageService {
     }
 
     @Transactional
-    public ChatMessageResponse sendMessage(String senderEmail, ChatMessageRequest request) {
-        User sender = chatService.getUserByEmail(senderEmail);
+    public ChatMessageResponse sendMessage(String senderPrincipalName, ChatMessageRequest request) {
+        User sender = chatService.getUserByEmail(senderPrincipalName);
         ChatRoom room = resolveRoom(sender, request);
         User receiver = room.getOtherParticipant(sender.getId());
 
@@ -105,9 +105,15 @@ public class MessageService {
                 payload.getSenderId(),
                 payload.getReceiverId());
 
-        messagingTemplate.convertAndSendToUser(sender.getEmail(), "/queue/messages", payload);
-        messagingTemplate.convertAndSendToUser(receiver.getEmail(), "/queue/messages", payload);
-        log.debug("Broadcasted message id={} to sender={} and receiver={}", payload.getId(), sender.getEmail(), receiver.getEmail());
+        String senderDestinationUser = resolveUserDestinationKey(sender);
+        String receiverDestinationUser = resolveUserDestinationKey(receiver);
+
+        messagingTemplate.convertAndSendToUser(senderDestinationUser, "/queue/messages", payload);
+        messagingTemplate.convertAndSendToUser(receiverDestinationUser, "/queue/messages", payload);
+        log.debug("Broadcasted message id={} to senderDestination={} receiverDestination={}",
+                payload.getId(),
+                senderDestinationUser,
+                receiverDestinationUser);
 
         return payload;
     }
@@ -128,7 +134,7 @@ public class MessageService {
 
         if (updatedCount > 0) {
             messagingTemplate.convertAndSendToUser(
-                    otherParticipant.getEmail(),
+                    resolveUserDestinationKey(otherParticipant),
                     "/queue/read-receipts",
                     ReadReceiptEvent.builder()
                             .chatRoomId(room.getId())
@@ -160,7 +166,7 @@ public class MessageService {
         }
 
         messagingTemplate.convertAndSendToUser(
-                receiver.getEmail(),
+                resolveUserDestinationKey(receiver),
                 "/queue/typing",
                 TypingEventResponse.builder()
                         .chatRoomId(request.getChatRoomId())
@@ -198,5 +204,13 @@ public class MessageService {
                 .deliveredAt(message.getDeliveredAt())
                 .readAt(message.getReadAt())
                 .build();
+    }
+
+    private String resolveUserDestinationKey(User user) {
+        String destinationKey = user.getUsername();
+        if (destinationKey == null || destinationKey.isBlank()) {
+            throw new BadRequestException("Unable to resolve user destination");
+        }
+        return destinationKey;
     }
 }

@@ -1,6 +1,7 @@
 package com.chatconnecting.chatconnecting.websocket;
 
 import com.chatconnecting.chatconnecting.security.JwtService;
+import java.security.Principal;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,7 +13,6 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
@@ -51,14 +51,17 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
                 throw new BadCredentialsException("Invalid JWT token");
             }
 
-            UsernamePasswordAuthenticationToken authentication =
-                    UsernamePasswordAuthenticationToken.authenticated(
-                            userDetails,
-                            null,
-                            userDetails.getAuthorities()
-                    );
-            accessor.setUser(authentication);
-            log.debug("Accepted STOMP CONNECT for user={} (sessionId={})", username, accessor.getSessionId());
+            String principalName = userDetails.getUsername();
+            if (principalName == null || principalName.isBlank()) {
+                throw new BadCredentialsException("Invalid JWT principal");
+            }
+
+            Principal principal = () -> principalName;
+            accessor.setUser(principal);
+            if (accessor.getSessionAttributes() != null) {
+                accessor.getSessionAttributes().put("username", principalName);
+            }
+            log.debug("Accepted STOMP CONNECT for principal={} (sessionId={})", principalName, accessor.getSessionId());
         } catch (BadCredentialsException ex) {
             log.warn("Rejecting STOMP CONNECT: {} (sessionId={})", ex.getMessage(), accessor.getSessionId());
             throw ex;
