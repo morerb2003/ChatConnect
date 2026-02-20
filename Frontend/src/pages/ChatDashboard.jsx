@@ -272,7 +272,7 @@ function ChatDashboard() {
         await loadRoomHistory(room.chatRoomId, 0, true)
         await markRoomAsRead(room.chatRoomId)
       } catch (error) {
-        toast.error(error?.response?.data?.message || 'Failed to open conversation')
+        toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to open conversation')
       } finally {
         openingConversationRef.current.delete(chatUser.userId)
       }
@@ -290,7 +290,7 @@ function ChatDashboard() {
         setActiveUserId((current) => current ?? sortedUsers[0].userId)
       }
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to load users')
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to load users')
     } finally {
       setLoadingUsers(false)
     }
@@ -405,7 +405,7 @@ function ChatDashboard() {
     try {
       await loadRoomHistory(activeRoomId, roomHistory.nextPage, false)
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to load older messages')
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to load older messages')
       shouldAutoScrollRef.current = true
     }
   }

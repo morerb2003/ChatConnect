@@ -94,30 +94,44 @@ public class ChatService {
     @Transactional
     public ChatRoomResponse getOrCreateChatRoom(String currentEmail, Long participantId) {
         User currentUser = getUserByEmail(currentEmail);
-        ChatRoom room = getOrCreateRoom(currentUser, participantId);
-        User participant = room.getOtherParticipant(currentUser.getId());
+        log.info("Get/create chat room: currentUserId={}, currentUserEmail={}, receiverId={}",
+                currentUser.getId(), currentUser.getEmail(), participantId);
+
+        validateParticipantId(currentUser.getId(), participantId);
+        User participant = userRepository.findById(participantId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        Optional<ChatRoom> existingRoom = findRoomBetweenUsers(currentUser.getId(), participant.getId());
+        ChatRoom room;
+        if (existingRoom.isPresent()) {
+            room = existingRoom.get();
+            log.info("Using existing chat room id={} for currentUserId={} and receiverId={}",
+                    room.getId(), currentUser.getId(), participant.getId());
+        } else {
+            Long[] normalizedPair = normalizePair(currentUser.getId(), participant.getId());
+            room = createRoomWithRaceProtection(currentUser, participant, normalizedPair);
+            log.info("Created chat room id={} for currentUserId={} and receiverId={}",
+                    room.getId(), currentUser.getId(), participant.getId());
+        }
+
+        User otherParticipant = resolveOtherParticipant(room, currentUser.getId());
 
         return ChatRoomResponse.builder()
                 .chatRoomId(room.getId())
-                .participantId(participant.getId())
-                .participantName(participant.getName())
-                .participantEmail(participant.getEmail())
+                .participantId(otherParticipant.getId())
+                .participantName(otherParticipant.getName())
+                .participantEmail(otherParticipant.getEmail())
                 .build();
     }
 
     @Transactional
     public ChatRoom getOrCreateRoom(User currentUser, Long participantId) {
-        if (participantId == null) {
-            throw new BadRequestException("Participant id is required");
-        }
-        if (currentUser.getId().equals(participantId)) {
-            throw new BadRequestException("You cannot create a room with yourself");
-        }
+        validateParticipantId(currentUser.getId(), participantId);
+        User participant = userRepository.findById(participantId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Long[] normalizedPair = normalizePair(currentUser.getId(), participant.getId());
 
-        User participant = getUserById(participantId);
-        Long[] normalizedPair = normalizePair(currentUser.getId(), participantId);
-
-        return chatRoomRepository.findByUserOneIdAndUserTwoId(normalizedPair[0], normalizedPair[1])
+        return findRoomBetweenUsers(currentUser.getId(), participant.getId())
                 .orElseGet(() -> createRoomWithRaceProtection(currentUser, participant, normalizedPair));
     }
 
@@ -133,8 +147,8 @@ public class ChatService {
             // Another concurrent request likely created the same normalized pair.
             log.debug("Detected concurrent chat room creation for pair=({},{}), refetching existing room",
                     normalizedPair[0], normalizedPair[1]);
-            return chatRoomRepository.findByUserOneIdAndUserTwoId(normalizedPair[0], normalizedPair[1])
-                    .orElseThrow(() -> ex);
+            return findRoomBetweenUsers(currentUser.getId(), participant.getId())
+                    .orElseThrow(() -> new BadRequestException("Unable to resolve chat room. Please retry."));
         }
     }
 
@@ -163,8 +177,29 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public Optional<ChatRoom> findRoomBetweenUsers(Long firstUserId, Long secondUserId) {
-        Long[] pair = normalizePair(firstUserId, secondUserId);
-        return chatRoomRepository.findByUserOneIdAndUserTwoId(pair[0], pair[1]);
+        if (firstUserId == null || secondUserId == null) {
+            return Optional.empty();
+        }
+        return chatRoomRepository.findRoomBetweenUsers(firstUserId, secondUserId);
+    }
+
+    private void validateParticipantId(Long currentUserId, Long participantId) {
+        if (participantId == null) {
+            throw new BadRequestException("Participant id is required");
+        }
+        if (currentUserId.equals(participantId)) {
+            throw new BadRequestException("You cannot create a room with yourself");
+        }
+    }
+
+    private User resolveOtherParticipant(ChatRoom room, Long currentUserId) {
+        if (room == null || room.getUserOne() == null || room.getUserTwo() == null) {
+            throw new BadRequestException("Chat room data is incomplete");
+        }
+        if (!room.hasParticipant(currentUserId)) {
+            throw new ForbiddenOperationException("You do not have access to this chat room");
+        }
+        return room.getOtherParticipant(currentUserId);
     }
 
     private String shortenPreview(String content) {

@@ -37,14 +37,14 @@ public class ChatController {
         return ResponseEntity.ok(chatService.getSidebarUsers(email));
     }
 
-    @PostMapping("/rooms/{participantId}")
+    @PostMapping("/rooms/{userId}")
     public ResponseEntity<ChatRoomResponse> getOrCreateRoom(
-            @PathVariable Long participantId,
+            @PathVariable Long userId,
             Authentication authentication
     ) {
         String email = requireAuthEmail(authentication);
-        log.debug("Get/create room request: requester={}, participantId={}", email, participantId);
-        return ResponseEntity.ok(chatService.getOrCreateChatRoom(email, participantId));
+        log.info("Chat room request: currentUser={}, receiverUserId={}", email, userId);
+        return ResponseEntity.ok(chatService.getOrCreateChatRoom(email, userId));
     }
 
     @GetMapping("/rooms/{chatRoomId}/messages")

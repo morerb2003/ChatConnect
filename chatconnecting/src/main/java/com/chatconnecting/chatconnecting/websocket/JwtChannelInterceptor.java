@@ -33,7 +33,7 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
             return message;
         }
 
-        if (!StompCommand.CONNECT.equals(accessor.getCommand()) || accessor.getUser() != null) {
+        if (!StompCommand.CONNECT.equals(accessor.getCommand())) {
             return message;
         }
 
