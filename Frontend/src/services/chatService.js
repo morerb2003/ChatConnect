@@ -69,3 +69,28 @@ export const markRoomAsRead = async (chatRoomId) => {
     attachUserMessage(error, 'Failed to mark messages as read')
   }
 }
+
+export const fetchMyProfile = async () => {
+  try {
+    const response = await api.get('/users/me', withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to load profile')
+  }
+}
+
+export const uploadProfileImage = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const response = await api.post('/users/upload-profile', formData, withAuth({
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }))
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to upload profile image')
+  }
+}

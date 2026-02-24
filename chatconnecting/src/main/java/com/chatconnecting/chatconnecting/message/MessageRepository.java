@@ -53,4 +53,6 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
             @Param("receiverId") Long receiverId,
             @Param("deliveredAt") LocalDateTime deliveredAt
     );
+
+    Optional<Message> findByIdAndReceiverId(Long id, Long receiverId);
 }

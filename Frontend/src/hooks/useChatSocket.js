@@ -8,7 +8,7 @@ import {
   shouldTreatAsFatalConnectionError,
 } from '../services/websocketService'
 
-function useChatSocket({ token, onMessage, onTyping, onReadReceipt, onPresence, onAuthError }) {
+function useChatSocket({ token, onMessage, onStatus, onCall, onTyping, onReadReceipt, onPresence, onAuthError }) {
   const clientRef = useRef(null)
   const unsubscribeRef = useRef(null)
   const reconnectTimerRef = useRef(null)
@@ -19,6 +19,8 @@ function useChatSocket({ token, onMessage, onTyping, onReadReceipt, onPresence, 
   const manualCloseRef = useRef(false)
   const handlersRef = useRef({
     onMessage,
+    onStatus,
+    onCall,
     onTyping,
     onReadReceipt,
     onPresence,
@@ -30,12 +32,14 @@ function useChatSocket({ token, onMessage, onTyping, onReadReceipt, onPresence, 
   useEffect(() => {
     handlersRef.current = {
       onMessage,
+      onStatus,
+      onCall,
       onTyping,
       onReadReceipt,
       onPresence,
       onAuthError,
     }
-  }, [onAuthError, onMessage, onPresence, onReadReceipt, onTyping])
+  }, [onAuthError, onCall, onMessage, onPresence, onReadReceipt, onStatus, onTyping])
 
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -210,7 +214,43 @@ function useChatSocket({ token, onMessage, onTyping, onReadReceipt, onPresence, 
     return true
   }, [])
 
-  return { isConnected, sendMessage, sendTypingEvent }
+  const sendDeliveryEvent = useCallback((payload) => {
+    if (!clientRef.current?.connected) return false
+    clientRef.current.publish({
+      destination: '/app/chat.delivered',
+      body: JSON.stringify(payload),
+    })
+    return true
+  }, [])
+
+  const sendReadEvent = useCallback((payload) => {
+    if (!clientRef.current?.connected) return false
+    clientRef.current.publish({
+      destination: '/app/message/read',
+      body: JSON.stringify(payload),
+    })
+    return true
+  }, [])
+
+  const sendCallSignal = useCallback((payload) => {
+    if (!clientRef.current?.connected) return false
+    const type = String(payload?.type || '').toUpperCase()
+    const destinationByType = {
+      OFFER: '/app/call.offer',
+      ANSWER: '/app/call.answer',
+      ICE: '/app/call.ice',
+      END: '/app/call.end',
+    }
+    const destination = destinationByType[type]
+    if (!destination) return false
+    clientRef.current.publish({
+      destination,
+      body: JSON.stringify({ ...payload, type }),
+    })
+    return true
+  }, [])
+
+  return { isConnected, sendMessage, sendTypingEvent, sendDeliveryEvent, sendReadEvent, sendCallSignal }
 }
 
 export default useChatSocket

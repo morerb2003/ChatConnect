@@ -4,6 +4,8 @@ import com.chatconnecting.chatconnecting.common.dto.MessageResponse;
 import com.chatconnecting.chatconnecting.exception.BadRequestException;
 import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
 import com.chatconnecting.chatconnecting.message.dto.ChatMessageRequest;
+import com.chatconnecting.chatconnecting.message.dto.DeliveryAckRequest;
+import com.chatconnecting.chatconnecting.message.dto.ReadMessageRequest;
 import com.chatconnecting.chatconnecting.message.dto.TypingEventRequest;
 import com.chatconnecting.chatconnecting.message.service.MessageService;
 import jakarta.validation.Valid;
@@ -38,6 +40,11 @@ public class ChatWebSocketController {
         messageService.sendMessage(principal.getName(), request);
     }
 
+    @MessageMapping("/chat")
+    public void sendMessageAlias(@Valid @Payload ChatMessageRequest request, Principal principal) {
+        sendMessage(request, principal);
+    }
+
     @MessageMapping("/chat.typing")
     public void sendTyping(@Valid @Payload TypingEventRequest request, Principal principal) {
         if (principal == null) {
@@ -50,6 +57,24 @@ public class ChatWebSocketController {
                 request.getChatRoomId(),
                 request.isTyping());
         messageService.sendTypingEvent(principal.getName(), request);
+    }
+
+    @MessageMapping("/chat.delivered")
+    public void markAsDelivered(@Valid @Payload DeliveryAckRequest request, Principal principal) {
+        if (principal == null) {
+            log.warn("Rejected chat.delivered: missing principal");
+            throw new ForbiddenOperationException("Unauthorized websocket request");
+        }
+        messageService.markMessageAsDelivered(principal.getName(), request);
+    }
+
+    @MessageMapping("/message/read")
+    public void markAsRead(@Valid @Payload ReadMessageRequest request, Principal principal) {
+        if (principal == null) {
+            log.warn("Rejected message/read: missing principal");
+            throw new ForbiddenOperationException("Unauthorized websocket request");
+        }
+        messageService.markMessageAsRead(principal.getName(), request);
     }
 
     @MessageExceptionHandler({ForbiddenOperationException.class, BadRequestException.class, IllegalArgumentException.class})

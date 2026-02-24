@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
+import CallModal from '../components/chat/CallModal'
 import ChatWindow from '../components/chat/ChatWindow'
 import UserSidebar from '../components/chat/UserSidebar'
+import { CallProvider } from '../context/CallContext'
 import useAuth from '../hooks/useAuth'
 import useChatSocket from '../hooks/useChatSocket'
 import useDebouncedCallback from '../hooks/useDebouncedCallback'
-import { fetchRoomMessages, fetchSidebarUsers, getOrCreateRoom, markRoomAsRead } from '../services/chatService'
+import { fetchMyProfile, fetchRoomMessages, fetchSidebarUsers, getOrCreateRoom, markRoomAsRead } from '../services/chatService'
 
 const PAGE_SIZE = 30
 
@@ -44,11 +46,16 @@ function ChatDashboard() {
   const [searchTerm, setSearchTerm] = useState('')
   const [typingUserId, setTypingUserId] = useState(null)
   const [loadingUsers, setLoadingUsers] = useState(true)
+  const [currentUserProfile, setCurrentUserProfile] = useState(null)
+  const [mobileView, setMobileView] = useState('list')
   const messageEndRef = useRef(null)
   const activeUserIdRef = useRef(null)
   const activeRoomIdRef = useRef(null)
   const shouldAutoScrollRef = useRef(true)
   const openingConversationRef = useRef(new Set())
+  const readAckedMessageIdsRef = useRef(new Set())
+  const activeMessagesRef = useRef([])
+  const callSignalHandlerRef = useRef(() => {})
 
   useEffect(() => {
     activeUserIdRef.current = activeUserId
@@ -65,6 +72,19 @@ function ChatDashboard() {
     if (!activeRoomId) return []
     return messagesByRoom[activeRoomId] || []
   }, [activeRoomId, messagesByRoom])
+
+  useEffect(() => {
+    activeMessagesRef.current = activeMessages
+  }, [activeMessages])
+
+  useEffect(() => {
+    setCurrentUserProfile((prev) => ({
+      id: prev?.id || user?.userId,
+      name: user?.name || prev?.name || '',
+      email: user?.email || prev?.email || '',
+      profileImageUrl: prev?.profileImageUrl || null,
+    }))
+  }, [user?.email, user?.name, user?.userId])
 
   const filteredUsers = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
@@ -143,15 +163,51 @@ function ChatDashboard() {
       if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId) {
         try {
           await markRoomAsRead(payload.chatRoomId)
+          if (payload.id) {
+            sendReadEventRef.current({
+              messageId: payload.id,
+              senderId: payload.senderId,
+              receiverId: user.userId,
+            })
+            readAckedMessageIdsRef.current.add(payload.id)
+          }
         } catch {
           // ignore transient read-receipt failures
         }
+      } else if (payload.senderId !== user.userId && payload.id) {
+        sendDeliveryEventRef.current({ messageId: payload.id })
       }
 
       shouldAutoScrollRef.current = activeRoomIdRef.current === payload.chatRoomId
     },
     [updateSidebarForMessage, user.userId],
   )
+
+  const sendDeliveryEventRef = useRef(() => false)
+  const sendReadEventRef = useRef(() => false)
+
+  const handleStatusEvent = useCallback((payload) => {
+    if (!payload?.id) return
+    setMessagesByRoom((prev) => {
+      const next = { ...prev }
+      let changed = false
+      Object.keys(next).forEach((roomKey) => {
+        const roomMessages = next[roomKey] || []
+        const updated = roomMessages.map((message) => {
+          if (message.id !== payload.id) return message
+          changed = true
+          return {
+            ...message,
+            status: payload.status || message.status,
+            deliveredAt: payload.deliveredAt ?? message.deliveredAt,
+            readAt: payload.readAt ?? message.readAt,
+          }
+        })
+        next[roomKey] = updated
+      })
+      return changed ? next : prev
+    })
+  }, [])
 
   const handleTypingEvent = useCallback((payload) => {
     if (!payload?.senderId) return
@@ -199,14 +255,32 @@ function ChatDashboard() {
     )
   }, [])
 
-  const { isConnected, sendMessage, sendTypingEvent } = useChatSocket({
+  const handleCallEvent = useCallback((payload) => {
+    callSignalHandlerRef.current?.(payload)
+  }, [])
+
+  const { isConnected, sendMessage, sendTypingEvent, sendDeliveryEvent, sendReadEvent, sendCallSignal } = useChatSocket({
     token,
     onMessage: handleIncomingMessage,
+    onStatus: handleStatusEvent,
+    onCall: handleCallEvent,
     onTyping: handleTypingEvent,
     onReadReceipt: handleReadReceipt,
     onPresence: handlePresenceEvent,
     onAuthError: () => logout({ notify: true }),
   })
+
+  useEffect(() => {
+    sendDeliveryEventRef.current = sendDeliveryEvent
+  }, [sendDeliveryEvent])
+
+  useEffect(() => {
+    sendReadEventRef.current = sendReadEvent
+  }, [sendReadEvent])
+
+  const registerCallSignalHandler = useCallback((handler) => {
+    callSignalHandlerRef.current = handler || (() => {})
+  }, [])
 
   const { debounced: sendStopTyping } = useDebouncedCallback(() => {
     if (!activeUser || !activeRoomId) return
@@ -251,7 +325,7 @@ function ChatDashboard() {
   )
 
   const openConversation = useCallback(
-    async (chatUser) => {
+    async (chatUser, switchToChatView = true) => {
       if (!chatUser?.userId) return
       if (openingConversationRef.current.has(chatUser.userId)) {
         return
@@ -261,6 +335,9 @@ function ChatDashboard() {
       try {
         setTypingUserId(null)
         setActiveUserId(chatUser.userId)
+        if (switchToChatView) {
+          setMobileView('chat')
+        }
 
         const room = await getOrCreateRoom(chatUser.userId)
         setUsers((prevUsers) =>
@@ -283,9 +360,13 @@ function ChatDashboard() {
   const loadUsers = useCallback(async () => {
     try {
       setLoadingUsers(true)
-      const response = await fetchSidebarUsers()
-      const sortedUsers = sortUsers(response)
+      const [usersResult, profileResult] = await Promise.allSettled([fetchSidebarUsers(), fetchMyProfile()])
+      const sidebarUsers = usersResult.status === 'fulfilled' ? usersResult.value : []
+      const sortedUsers = sortUsers(sidebarUsers)
       setUsers(sortedUsers)
+      if (profileResult.status === 'fulfilled') {
+        setCurrentUserProfile(profileResult.value)
+      }
       if (sortedUsers.length > 0) {
         setActiveUserId((current) => current ?? sortedUsers[0].userId)
       }
@@ -301,9 +382,15 @@ function ChatDashboard() {
   }, [loadUsers])
 
   useEffect(() => {
+    if (!activeUser) {
+      setMobileView('list')
+    }
+  }, [activeUser])
+
+  useEffect(() => {
     if (!activeUser) return
     if (!activeUser.chatRoomId) {
-      openConversation(activeUser)
+      openConversation(activeUser, false)
       return
     }
     if (!historyByRoom[activeUser.chatRoomId]?.loaded) {
@@ -312,6 +399,24 @@ function ChatDashboard() {
         .catch(() => {})
     }
   }, [activeUser, historyByRoom, loadRoomHistory, openConversation])
+
+  useEffect(() => {
+    if (!activeUser || !activeRoomId || !user?.userId) return
+    const roomMessages = activeMessagesRef.current
+    roomMessages.forEach((message) => {
+      if (message.senderId === user.userId) return
+      if (!message.id || message.status === 'READ') return
+      if (readAckedMessageIdsRef.current.has(message.id)) return
+      const published = sendReadEventRef.current({
+        messageId: message.id,
+        senderId: message.senderId,
+        receiverId: user.userId,
+      })
+      if (published) {
+        readAckedMessageIdsRef.current.add(message.id)
+      }
+    })
+  }, [activeRoomId, activeUser, user?.userId])
 
   useEffect(() => {
     if (!activeRoomId) return
@@ -362,7 +467,7 @@ function ChatDashboard() {
       senderId: user.userId,
       receiverId: activeUser.userId,
       content,
-      status: activeUser.online ? 'DELIVERED' : 'SENT',
+      status: 'SENT',
       timestamp: new Date().toISOString(),
       isOwn: true,
     }
@@ -419,32 +524,47 @@ function ChatDashboard() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
-      <section className="grid h-[calc(100vh-2rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] md:grid-cols-[320px_1fr] md:rounded-[28px]">
-        <UserSidebar
-          users={filteredUsers}
-          activeUserId={activeUserId}
-          onSelectUser={openConversation}
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          connected={isConnected}
-          currentUserName={user?.name || user?.email || 'User'}
-          onLogout={() => logout()}
-        />
-        <ChatWindow
-          activeUser={activeUser}
-          messages={activeMessages}
-          draft={draft}
-          isConnected={isConnected}
-          onDraftChange={handleDraftChange}
-          onSend={handleSendMessage}
-          onLoadOlder={loadOlderMessages}
-          hasMoreHistory={Boolean(activeRoomId && historyByRoom[activeRoomId] && !historyByRoom[activeRoomId].last)}
-          typing={typingUserId === activeUserId}
-          messageEndRef={messageEndRef}
-        />
-      </section>
-    </main>
+    <CallProvider
+      currentUser={currentUserProfile || user}
+      activeUser={activeUser}
+      isSocketConnected={isConnected}
+      sendCallSignal={sendCallSignal}
+      registerSignalHandler={registerCallSignalHandler}
+    >
+      <main className="mx-auto min-h-screen max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
+        <section className="grid h-[calc(100vh-2rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] md:grid-cols-[320px_1fr] md:rounded-[28px]">
+          <UserSidebar
+            className={mobileView === 'chat' ? 'hidden md:flex' : 'flex'}
+            users={filteredUsers}
+            activeUserId={activeUserId}
+            onSelectUser={openConversation}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            connected={isConnected}
+            currentUserName={currentUserProfile?.name || user?.name || user?.email || 'User'}
+            currentUserEmail={currentUserProfile?.email || user?.email || ''}
+            currentUserProfileImage={currentUserProfile?.profileImageUrl}
+            onProfileUpdated={(profile) => setCurrentUserProfile(profile)}
+            onLogout={() => logout()}
+          />
+          <ChatWindow
+            className={mobileView === 'list' ? 'hidden md:grid' : 'grid'}
+            activeUser={activeUser}
+            messages={activeMessages}
+            draft={draft}
+            isConnected={isConnected}
+            onDraftChange={handleDraftChange}
+            onSend={handleSendMessage}
+            onLoadOlder={loadOlderMessages}
+            hasMoreHistory={Boolean(activeRoomId && historyByRoom[activeRoomId] && !historyByRoom[activeRoomId].last)}
+            typing={typingUserId === activeUserId}
+            messageEndRef={messageEndRef}
+            onBack={() => setMobileView('list')}
+          />
+        </section>
+      </main>
+      <CallModal activeUser={activeUser} />
+    </CallProvider>
   )
 }
 

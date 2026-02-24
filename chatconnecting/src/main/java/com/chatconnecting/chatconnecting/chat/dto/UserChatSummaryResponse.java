@@ -16,6 +16,7 @@ public class UserChatSummaryResponse {
     private Long userId;
     private String name;
     private String email;
+    private String profileImageUrl;
     private boolean online;
     private Long unreadCount;
     private String lastMessagePreview;

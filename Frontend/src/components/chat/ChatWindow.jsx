@@ -1,6 +1,8 @@
 import MessageBubble from './MessageBubble'
+import ChatHeader from './ChatHeader'
 
 function ChatWindow({
+  className = '',
   activeUser,
   messages,
   draft,
@@ -11,6 +13,7 @@ function ChatWindow({
   hasMoreHistory,
   typing,
   messageEndRef,
+  onBack,
 }) {
   if (!activeUser) {
     return (
@@ -26,13 +29,10 @@ function ChatWindow({
   }
 
   return (
-    <section className="grid h-full grid-rows-[auto_1fr_auto] bg-gradient-to-b from-white to-emerald-50/50">
-      <header className="border-b border-slate-200 px-4 py-4">
-        <h2 className="text-lg font-semibold text-slate-900">{activeUser.name}</h2>
-        <p className="text-xs text-slate-500">{activeUser.online ? 'Online' : 'Offline'}</p>
-      </header>
+    <section className={`grid h-full grid-rows-[auto_1fr_auto] bg-gradient-to-b from-white to-emerald-50/50 ${className}`}>
+      <ChatHeader activeUser={activeUser} onBack={onBack} />
 
-      <div className="overflow-y-auto px-4 py-3">
+      <div className="overflow-y-auto px-3 py-3 sm:px-4">
         {hasMoreHistory ? (
           <button
             type="button"
@@ -44,6 +44,11 @@ function ChatWindow({
         ) : null}
 
         <div className="space-y-2.5">
+          {messages.length === 0 ? (
+            <div className="grid min-h-40 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 text-center">
+              <p className="text-sm text-slate-500">No messages yet. Send a message to start the conversation.</p>
+            </div>
+          ) : null}
           {messages.map((message) => (
             <MessageBubble
               key={`${message.id ?? message.clientMessageId}-${message.timestamp}`}
@@ -62,18 +67,20 @@ function ChatWindow({
 
       <form
         onSubmit={onSend}
-        className="flex items-center gap-2 border-t border-slate-200 bg-white px-4 py-3"
+        className="flex items-end gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:px-4"
       >
-        <input
+        <textarea
           value={draft}
           onChange={(event) => onDraftChange(event.target.value)}
           placeholder={`Message ${activeUser.name}`}
-          className="flex-1 rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
+          rows={1}
+          aria-label={`Message ${activeUser.name}`}
+          className="max-h-28 min-h-11 flex-1 resize-none rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
         />
         <button
           type="submit"
           disabled={!draft.trim() || !isConnected}
-          className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+          className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
         >
           Send
         </button>

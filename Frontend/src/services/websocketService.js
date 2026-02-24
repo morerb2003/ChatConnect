@@ -5,6 +5,8 @@ export const MAX_RECONNECT_ATTEMPTS = 5
 const BASE_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 15000
 export const USER_MESSAGES_DESTINATION = '/user/queue/messages'
+export const USER_STATUS_DESTINATION = '/user/queue/status'
+export const USER_CALL_DESTINATION = '/user/queue/call'
 export const USER_TYPING_DESTINATION = '/user/queue/typing'
 export const USER_READ_RECEIPTS_DESTINATION = '/user/queue/read-receipts'
 export const TOPIC_PRESENCE_DESTINATION = '/topic/presence'
@@ -105,6 +107,8 @@ export const attachSubscriptions = (client, handlers) => {
   }
 
   subscribe(USER_MESSAGES_DESTINATION, handlers.onMessage)
+  subscribe(USER_STATUS_DESTINATION, handlers.onStatus)
+  subscribe(USER_CALL_DESTINATION, handlers.onCall)
   subscribe(USER_TYPING_DESTINATION, handlers.onTyping)
   subscribe(USER_READ_RECEIPTS_DESTINATION, handlers.onReadReceipt)
   subscribe(TOPIC_PRESENCE_DESTINATION, handlers.onPresence)

@@ -73,6 +73,7 @@ public class ChatService {
                     .userId(user.getId())
                     .name(user.getName())
                     .email(user.getEmail())
+                    .profileImageUrl(user.getProfileImageUrl())
                     .online(presenceService.isUserOnline(user.getEmail()))
                     .unreadCount(unreadCount)
                     .lastMessagePreview(preview)

@@ -8,7 +8,9 @@ import com.chatconnecting.chatconnecting.message.MessageRepository;
 import com.chatconnecting.chatconnecting.message.MessageStatus;
 import com.chatconnecting.chatconnecting.message.dto.ChatMessageRequest;
 import com.chatconnecting.chatconnecting.message.dto.ChatMessageResponse;
+import com.chatconnecting.chatconnecting.message.dto.DeliveryAckRequest;
 import com.chatconnecting.chatconnecting.message.dto.MessagePageResponse;
+import com.chatconnecting.chatconnecting.message.dto.ReadMessageRequest;
 import com.chatconnecting.chatconnecting.message.dto.ReadReceiptEvent;
 import com.chatconnecting.chatconnecting.message.dto.TypingEventRequest;
 import com.chatconnecting.chatconnecting.message.dto.TypingEventResponse;
@@ -84,17 +86,12 @@ public class MessageService {
             throw new BadRequestException("Message content cannot be empty");
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        boolean receiverOnline = presenceService.isUserOnline(receiver.getEmail());
-        MessageStatus status = receiverOnline ? MessageStatus.DELIVERED : MessageStatus.SENT;
-
         Message message = Message.builder()
                 .chatRoom(room)
                 .sender(sender)
                 .receiver(receiver)
                 .content(content)
-                .status(status)
-                .deliveredAt(receiverOnline ? now : null)
+                .status(MessageStatus.SENT)
                 .build();
 
         Message saved = messageRepository.saveAndFlush(message);
@@ -115,6 +112,52 @@ public class MessageService {
                 senderDestinationUser,
                 receiverDestinationUser);
 
+        return payload;
+    }
+
+    @Transactional
+    public ChatMessageResponse markMessageAsDelivered(String receiverEmail, DeliveryAckRequest request) {
+        User receiver = chatService.getUserByEmail(receiverEmail);
+        Message message = messageRepository.findByIdAndReceiverId(request.getMessageId(), receiver.getId())
+                .orElseThrow(() -> new BadRequestException("Message not found"));
+
+        if (message.getStatus() == MessageStatus.SENT) {
+            message.setStatus(MessageStatus.DELIVERED);
+            message.setDeliveredAt(LocalDateTime.now());
+            message = messageRepository.saveAndFlush(message);
+        }
+
+        ChatMessageResponse payload = toResponse(message, null);
+        messagingTemplate.convertAndSendToUser(
+                resolveUserDestinationKey(message.getSender()),
+                "/queue/status",
+                payload
+        );
+        return payload;
+    }
+
+    @Transactional
+    public ChatMessageResponse markMessageAsRead(String readerEmail, ReadMessageRequest request) {
+        User reader = chatService.getUserByEmail(readerEmail);
+        Message message = messageRepository.findByIdAndReceiverId(request.getMessageId(), reader.getId())
+                .orElseThrow(() -> new BadRequestException("Message not found"));
+
+        if (message.getStatus() != MessageStatus.READ) {
+            LocalDateTime now = LocalDateTime.now();
+            if (message.getStatus() == MessageStatus.SENT) {
+                message.setDeliveredAt(now);
+            }
+            message.setStatus(MessageStatus.READ);
+            message.setReadAt(now);
+            message = messageRepository.saveAndFlush(message);
+        }
+
+        ChatMessageResponse payload = toResponse(message, null);
+        messagingTemplate.convertAndSendToUser(
+                resolveUserDestinationKey(message.getSender()),
+                "/queue/status",
+                payload
+        );
         return payload;
     }
 
