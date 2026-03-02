@@ -531,8 +531,8 @@ function ChatDashboard() {
       sendCallSignal={sendCallSignal}
       registerSignalHandler={registerCallSignalHandler}
     >
-      <main className="mx-auto min-h-screen max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
-        <section className="grid h-[calc(100vh-2rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] md:grid-cols-[320px_1fr] md:rounded-[28px]">
+      <main className="mx-auto min-h-screen max-w-7xl px-2 py-2 sm:px-4 sm:py-4 lg:px-6 lg:py-6">
+        <section className="grid h-[calc(100dvh-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] sm:h-[calc(100dvh-2rem)] sm:rounded-3xl md:grid-cols-[280px_1fr] md:h-[calc(100dvh-2.5rem)] md:rounded-[28px] lg:grid-cols-[340px_1fr] lg:h-[calc(100dvh-3rem)]">
           <UserSidebar
             className={mobileView === 'chat' ? 'hidden md:flex' : 'flex'}
             users={filteredUsers}

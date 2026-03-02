@@ -32,7 +32,7 @@ function ChatWindow({
     <section className={`grid h-full grid-rows-[auto_1fr_auto] bg-gradient-to-b from-white to-emerald-50/50 ${className}`}>
       <ChatHeader activeUser={activeUser} onBack={onBack} />
 
-      <div className="overflow-y-auto px-3 py-3 sm:px-4">
+      <div className="overflow-y-auto px-2.5 py-3 sm:px-4">
         {hasMoreHistory ? (
           <button
             type="button"
@@ -65,25 +65,24 @@ function ChatWindow({
         </div>
       </div>
 
-      <form
-        onSubmit={onSend}
-        className="flex items-end gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:px-4"
-      >
-        <textarea
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          placeholder={`Message ${activeUser.name}`}
-          rows={1}
-          aria-label={`Message ${activeUser.name}`}
-          className="max-h-28 min-h-11 flex-1 resize-none rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-500"
-        />
-        <button
-          type="submit"
-          disabled={!draft.trim() || !isConnected}
-          className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-        >
-          Send
-        </button>
+      <form onSubmit={onSend} className="border-t border-slate-200/90 bg-white/95 px-2.5 py-2.5 backdrop-blur sm:px-4 sm:py-3">
+        <div className="flex items-end gap-1.5 rounded-2xl border border-slate-200 bg-slate-50/85 p-1.5 shadow-sm sm:gap-2">
+          <textarea
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            placeholder={`Message ${activeUser.name}`}
+            rows={1}
+            aria-label={`Message ${activeUser.name}`}
+            className="max-h-32 min-h-10 flex-1 resize-none rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 sm:min-h-11 sm:px-3.5"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || !isConnected}
+            className="inline-flex h-10 min-w-[4.5rem] items-center justify-center rounded-xl bg-emerald-600 px-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 sm:h-11 sm:min-w-20 sm:px-4"
+          >
+            Send
+          </button>
+        </div>
       </form>
     </section>
   )

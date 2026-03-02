@@ -19,8 +19,8 @@ function UserSidebar({
   const [isProfileModalOpen, setProfileModalOpen] = useState(false)
 
   return (
-    <aside className={`flex h-full flex-col border-b border-slate-200 bg-white md:border-r md:border-b-0 ${className}`}>
-      <div className="border-b border-slate-200 px-4 py-4">
+    <aside className={`flex h-full min-h-0 flex-col border-b border-slate-200 bg-white md:border-r md:border-b-0 ${className}`}>
+      <div className="border-b border-slate-200 px-3 py-3 sm:px-4 sm:py-4">
         <p className="text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">ChatConnect</p>
         <div className="mt-2 flex items-center gap-3">
           <Avatar
@@ -41,13 +41,13 @@ function UserSidebar({
         <button
           type="button"
           onClick={onLogout}
-          className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+          className="mt-2.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 sm:mt-3"
         >
           Logout
         </button>
       </div>
 
-      <div className="p-4">
+      <div className="px-3 py-3 sm:p-4">
         <label htmlFor="user-search" className="mb-1.5 block text-xs font-medium text-slate-600">
           Search people
         </label>
@@ -61,7 +61,7 @@ function UserSidebar({
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
+      <div className="flex-1 overflow-y-auto px-2 pb-3 sm:px-2.5">
         {users.length === 0 ? (
           <div className="px-3 py-5 text-center text-sm text-slate-500">No users found.</div>
         ) : null}
@@ -70,7 +70,7 @@ function UserSidebar({
             key={user.userId}
             type="button"
             onClick={() => onSelectUser(user)}
-            className={`mb-1.5 w-full rounded-xl border px-3 py-2.5 text-left transition ${
+            className={`mb-1.5 w-full rounded-xl border px-2.5 py-2.5 text-left transition sm:px-3 ${
               activeUserId === user.userId
                 ? 'border-emerald-300 bg-emerald-50'
                 : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
@@ -80,7 +80,7 @@ function UserSidebar({
               <div className="flex min-w-0 items-start gap-2.5">
                 <Avatar name={user.name} imageUrl={user.profileImageUrl} size="md" />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <span className="truncate text-sm font-semibold text-slate-900">{user.name}</span>
                     <span className={`h-2.5 w-2.5 rounded-full ${user.online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                   </div>

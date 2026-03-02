@@ -7,20 +7,20 @@ function ChatHeader({ activeUser, onBack }) {
   const disableCalls = inCall || !activeUser?.online
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:py-4">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 px-3 py-3 sm:flex-nowrap sm:items-center sm:px-4 sm:py-4">
+      <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
         {onBack ? (
           <button
             type="button"
             onClick={onBack}
-            className="mr-1 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 md:hidden"
+            className="mr-0.5 rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 md:hidden"
           >
             Back
           </button>
         ) : null}
         <Avatar name={activeUser.name} imageUrl={activeUser.profileImageUrl} size="lg" />
         <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold text-slate-900">{activeUser.name}</h2>
+          <h2 className="truncate text-base font-semibold text-slate-900 sm:text-lg">{activeUser.name}</h2>
           <p className={`flex items-center gap-1.5 text-xs ${activeUser.online ? 'text-emerald-600' : 'text-slate-500'}`}>
             <span className={`inline-block h-2 w-2 rounded-full ${activeUser.online ? 'bg-emerald-500' : 'bg-slate-400'}`} />
             {activeUser.online ? 'Online' : 'Offline'}
@@ -28,7 +28,7 @@ function ChatHeader({ activeUser, onBack }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={startAudioCall}

@@ -9,7 +9,7 @@ function MessageBubble({ message, isOwn, timeLabel }) {
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 shadow-sm sm:max-w-[72%] ${
+        className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 shadow-sm sm:max-w-[78%] md:max-w-[72%] lg:max-w-[66%] ${
           isOwn ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-900'
         }`}
       >
