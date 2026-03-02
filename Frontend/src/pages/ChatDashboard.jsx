@@ -7,7 +7,20 @@ import { CallProvider } from '../context/CallContext'
 import useAuth from '../hooks/useAuth'
 import useChatSocket from '../hooks/useChatSocket'
 import useDebouncedCallback from '../hooks/useDebouncedCallback'
-import { fetchMyProfile, fetchRoomMessages, fetchSidebarUsers, getOrCreateRoom, markRoomAsRead } from '../services/chatService'
+import {
+  deleteMessageForMe,
+  deleteMessageForEveryone,
+  editMessage,
+  fetchMyProfile,
+  fetchRoomMessages,
+  fetchSidebarUsers,
+  forwardMessageToUsers,
+  getOrCreateRoom,
+  markRoomAsRead,
+  searchRoomMessages,
+  uploadChatAttachment,
+} from '../services/chatService'
+import { buildStoredMessageContent, parseStoredMessageContent } from '../utils/messageContent'
 
 const PAGE_SIZE = 30
 
@@ -36,6 +49,34 @@ const dedupeMessages = (messages) => {
   })
 }
 
+const resolveAssetUrl = (url) => {
+  if (!url) return null
+  if (/^https?:\/\//i.test(url)) return url
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+  const serverBase = apiBase.endsWith('/api') ? apiBase.slice(0, -4) : apiBase
+  return `${serverBase}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+const toViewMessage = (message, currentUserId) => {
+  const parsed = parseStoredMessageContent(message.content)
+  return {
+    ...message,
+    isOwn: message.senderId === currentUserId,
+    timestamp: message.timestamp || new Date().toISOString(),
+    displayContent: parsed.text,
+    replyTo: parsed.replyTo,
+    forwarded: parsed.forwarded,
+    attachment: parsed.attachment
+      ? {
+          ...parsed.attachment,
+          url: resolveAssetUrl(parsed.attachment.url),
+        }
+      : null,
+    deletedForEveryone: parsed.deletedForEveryone,
+    editedAt: parsed.editedAt,
+  }
+}
+
 function ChatDashboard() {
   const { user, token, logout } = useAuth()
   const [users, setUsers] = useState([])
@@ -48,6 +89,14 @@ function ChatDashboard() {
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [currentUserProfile, setCurrentUserProfile] = useState(null)
   const [mobileView, setMobileView] = useState('list')
+  const [replyTarget, setReplyTarget] = useState(null)
+  const [forwardTarget, setForwardTarget] = useState(null)
+  const [editingMessageId, setEditingMessageId] = useState(null)
+  const [attachmentDraft, setAttachmentDraft] = useState(null)
+  const [chatSearchTerm, setChatSearchTerm] = useState('')
+  const [searchMatches, setSearchMatches] = useState([])
+  const [highlightedMessageIds, setHighlightedMessageIds] = useState(new Set())
+  const [hiddenMessageKeysByRoom, setHiddenMessageKeysByRoom] = useState({})
   const messageEndRef = useRef(null)
   const activeUserIdRef = useRef(null)
   const activeRoomIdRef = useRef(null)
@@ -56,6 +105,15 @@ function ChatDashboard() {
   const readAckedMessageIdsRef = useRef(new Set())
   const activeMessagesRef = useRef([])
   const callSignalHandlerRef = useRef(() => {})
+  const previewUrlRef = useRef(null)
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     activeUserIdRef.current = activeUserId
@@ -72,6 +130,25 @@ function ChatDashboard() {
     if (!activeRoomId) return []
     return messagesByRoom[activeRoomId] || []
   }, [activeRoomId, messagesByRoom])
+
+  const visibleMessages = useMemo(() => {
+    if (!activeRoomId) return activeMessages
+    const hiddenKeys = new Set(hiddenMessageKeysByRoom[activeRoomId] || [])
+    return activeMessages.filter((message) => {
+      const key = String(message.id || message.clientMessageId)
+      return !hiddenKeys.has(key)
+    }).map((message) => ({
+      ...message,
+      highlighted: highlightedMessageIds.has(String(message.id || message.clientMessageId)),
+    }))
+  }, [activeMessages, activeRoomId, hiddenMessageKeysByRoom, highlightedMessageIds])
+
+  const editingMessage = useMemo(() => {
+    if (!editingMessageId) return null
+    return activeMessages.find((message) => message.id === editingMessageId) || null
+  }, [activeMessages, editingMessageId])
+
+  const filteredChatMessages = visibleMessages
 
   useEffect(() => {
     activeMessagesRef.current = activeMessages
@@ -112,10 +189,12 @@ function ChatDashboard() {
               isIncoming &&
               !(activeUserIdRef.current === chatUser.userId && activeRoomIdRef.current === payload.chatRoomId)
 
+            const parsedContent = parseStoredMessageContent(payload.content)
+
             return {
               ...chatUser,
               chatRoomId: payload.chatRoomId,
-              lastMessagePreview: shortenPreview(payload.content),
+              lastMessagePreview: shortenPreview(parsedContent.text || (parsedContent.attachment?.name ? `Attachment: ${parsedContent.attachment.name}` : '')),
               lastMessageAt: payload.timestamp,
               unreadCount: shouldIncreaseUnread ? (chatUser.unreadCount || 0) + 1 : 0,
             }
@@ -130,11 +209,7 @@ function ChatDashboard() {
     async (payload) => {
       if (!payload?.chatRoomId) return
 
-      const mappedMessage = {
-        ...payload,
-        isOwn: payload.senderId === user.userId,
-        timestamp: payload.timestamp || new Date().toISOString(),
-      }
+      const mappedMessage = toViewMessage(payload, user.userId)
 
       setMessagesByRoom((prev) => {
         const roomMessages = prev[payload.chatRoomId] || []
@@ -146,10 +221,17 @@ function ChatDashboard() {
         if (optimisticIndex >= 0) {
           nextMessages = [...roomMessages]
           nextMessages[optimisticIndex] = mappedMessage
-        } else if (roomMessages.some((message) => message.id && message.id === payload.id)) {
-          nextMessages = roomMessages
         } else {
-          nextMessages = [...roomMessages, mappedMessage]
+          const existingIndex = roomMessages.findIndex((message) => message.id && message.id === payload.id)
+          if (existingIndex >= 0) {
+            nextMessages = [...roomMessages]
+            nextMessages[existingIndex] = {
+              ...roomMessages[existingIndex],
+              ...mappedMessage,
+            }
+          } else {
+            nextMessages = [...roomMessages, mappedMessage]
+          }
         }
 
         return {
@@ -176,6 +258,18 @@ function ChatDashboard() {
         }
       } else if (payload.senderId !== user.userId && payload.id) {
         sendDeliveryEventRef.current({ messageId: payload.id })
+      }
+
+      if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId && payload.id) {
+        const key = String(payload.id)
+        setHighlightedMessageIds((current) => new Set([...current, key]))
+        setTimeout(() => {
+          setHighlightedMessageIds((current) => {
+            const next = new Set(current)
+            next.delete(key)
+            return next
+          })
+        }, 2200)
       }
 
       shouldAutoScrollRef.current = activeRoomIdRef.current === payload.chatRoomId
@@ -294,10 +388,7 @@ function ChatDashboard() {
   const loadRoomHistory = useCallback(
     async (chatRoomId, page, replace = false) => {
       const pageData = await fetchRoomMessages(chatRoomId, page, PAGE_SIZE)
-      const mappedMessages = pageData.messages.map((message) => ({
-        ...message,
-        isOwn: message.senderId === user.userId,
-      }))
+      const mappedMessages = pageData.messages.map((message) => toViewMessage(message, user.userId))
 
       setMessagesByRoom((prev) => {
         const existing = prev[chatRoomId] || []
@@ -388,6 +479,27 @@ function ChatDashboard() {
   }, [activeUser])
 
   useEffect(() => {
+    if (chatSearchTerm.trim()) return
+    setSearchMatches([])
+    setHighlightedMessageIds(new Set())
+  }, [chatSearchTerm])
+
+  useEffect(() => {
+    setReplyTarget(null)
+    setForwardTarget(null)
+    setEditingMessageId(null)
+    setChatSearchTerm('')
+    setSearchMatches([])
+    setHighlightedMessageIds(new Set())
+    setDraft('')
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    setAttachmentDraft(null)
+  }, [activeRoomId])
+
+  useEffect(() => {
     if (!activeUser) return
     if (!activeUser.chatRoomId) {
       openConversation(activeUser, false)
@@ -428,6 +540,9 @@ function ChatDashboard() {
 
   const handleDraftChange = (value) => {
     setDraft(value)
+    if (forwardTarget) {
+      setForwardTarget(null)
+    }
     if (!activeUser || !activeRoomId || !value.trim()) return
 
     sendTypingEvent({
@@ -441,17 +556,82 @@ function ChatDashboard() {
   const handleSendMessage = async (event) => {
     event.preventDefault()
     const content = draft.trim()
-    if (!content || !activeUser || !activeRoomId) return
+    if (!activeUser || !activeRoomId) return
     if (!isConnected) {
       toast.error('Waiting for live connection. Please try again.')
       return
     }
 
+    if (editingMessageId) {
+      if (!content) return
+      try {
+        const existing = activeMessages.find((message) => message.id === editingMessageId)
+        if (!existing) return
+
+        const updatedContent = buildStoredMessageContent({
+          text: content,
+          replyTo: existing.replyTo,
+          forwarded: existing.forwarded,
+          attachment: existing.attachment,
+          deletedForEveryone: false,
+          editedAt: new Date().toISOString(),
+        })
+
+        const updated = await editMessage(editingMessageId, updatedContent)
+        const mappedUpdated = toViewMessage(updated, user.userId)
+        setMessagesByRoom((prev) => ({
+          ...prev,
+          [activeRoomId]: (prev[activeRoomId] || []).map((message) =>
+            message.id === editingMessageId ? { ...message, ...mappedUpdated } : message,
+          ),
+        }))
+        setEditingMessageId(null)
+        setDraft('')
+      } catch (error) {
+        toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to edit message')
+      }
+      return
+    }
+
+    if (!content && !attachmentDraft && !forwardTarget) return
+
+    let attachmentMeta = forwardTarget?.attachment || null
+    if (attachmentDraft?.file) {
+      try {
+        const uploaded = await uploadChatAttachment(attachmentDraft.file)
+        attachmentMeta = {
+          url: uploaded.url,
+          name: uploaded.fileName,
+          size: uploaded.size,
+          contentType: uploaded.contentType,
+          kind: uploaded.kind,
+        }
+      } catch (error) {
+        toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to upload attachment')
+        return
+      }
+    }
+
+    const storedContent = buildStoredMessageContent({
+      text: content || forwardTarget?.displayContent || '',
+      replyTo: replyTarget
+        ? {
+            id: replyTarget.id || null,
+            senderName: replyTarget.senderName || 'User',
+            text: replyTarget.text || '',
+          }
+        : null,
+      forwarded: Boolean(forwardTarget),
+      attachment: attachmentMeta,
+      deletedForEveryone: false,
+      editedAt: null,
+    })
+
     const clientMessageId = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const published = sendMessage({
       chatRoomId: activeRoomId,
       receiverId: activeUser.userId,
-      content,
+      content: storedContent,
       clientMessageId,
     })
 
@@ -466,15 +646,15 @@ function ChatDashboard() {
       chatRoomId: activeRoomId,
       senderId: user.userId,
       receiverId: activeUser.userId,
-      content,
+      content: storedContent,
       status: 'SENT',
       timestamp: new Date().toISOString(),
-      isOwn: true,
     }
+    const mappedOptimistic = toViewMessage(optimisticMessage, user.userId)
 
     setMessagesByRoom((prev) => ({
       ...prev,
-      [activeRoomId]: [...(prev[activeRoomId] || []), optimisticMessage],
+      [activeRoomId]: [...(prev[activeRoomId] || []), mappedOptimistic],
     }))
     setUsers((prevUsers) =>
       sortUsers(
@@ -482,8 +662,8 @@ function ChatDashboard() {
           chatUser.userId === activeUser.userId
             ? {
                 ...chatUser,
-                lastMessagePreview: shortenPreview(content),
-                lastMessageAt: optimisticMessage.timestamp,
+                lastMessagePreview: shortenPreview(mappedOptimistic.displayContent || attachmentMeta?.name || ''),
+                lastMessageAt: mappedOptimistic.timestamp,
                 unreadCount: 0,
               }
             : chatUser,
@@ -493,12 +673,190 @@ function ChatDashboard() {
 
     shouldAutoScrollRef.current = true
     setDraft('')
+    setReplyTarget(null)
+    setForwardTarget(null)
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    setAttachmentDraft(null)
 
     sendTypingEvent({
       chatRoomId: activeRoomId,
       receiverId: activeUser.userId,
       typing: false,
     })
+  }
+
+  const handleReplyMessage = (message) => {
+    if (!message) return
+    setEditingMessageId(null)
+    setForwardTarget(null)
+    setReplyTarget({
+      id: message.id || message.clientMessageId,
+      senderName: message.isOwn ? 'You' : activeUser?.name || 'User',
+      text: message.displayContent || message.attachment?.name || 'Attachment',
+    })
+  }
+
+  const handleForwardMessage = (message) => {
+    if (!message) return
+    setReplyTarget(null)
+    setEditingMessageId(null)
+    setForwardTarget(message)
+    setDraft('')
+  }
+
+  const handleEditMessage = (message) => {
+    if (!message?.id || !message.isOwn || message.deletedForEveryone) return
+    setReplyTarget(null)
+    setForwardTarget(null)
+    setEditingMessageId(message.id)
+    setDraft(message.displayContent || '')
+  }
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null)
+    setDraft('')
+  }
+
+  const handleDeleteForMe = async (message) => {
+    if (!message || !activeRoomId) return
+    if (message.id) {
+      try {
+        await deleteMessageForMe(message.id)
+      } catch (error) {
+        toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to hide message')
+        return
+      }
+    }
+    const key = String(message.id || message.clientMessageId)
+    setHiddenMessageKeysByRoom((prev) => ({
+      ...prev,
+      [activeRoomId]: [...new Set([...(prev[activeRoomId] || []), key])],
+    }))
+  }
+
+  const handleDeleteForEveryone = async (message) => {
+    if (!message?.id || !message.isOwn || !activeRoomId) return
+    try {
+      const updated = await deleteMessageForEveryone(message.id)
+      const mappedUpdated = toViewMessage(updated, user.userId)
+      setMessagesByRoom((prev) => ({
+        ...prev,
+        [activeRoomId]: (prev[activeRoomId] || []).map((item) => (item.id === message.id ? { ...item, ...mappedUpdated } : item)),
+      }))
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to delete message')
+    }
+  }
+
+  const handleEmojiPick = (emoji) => {
+    setDraft((current) => `${current}${emoji}`)
+  }
+
+  const handleAttachmentPick = (file) => {
+    if (!file) return
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'video/mp4',
+      'video/webm',
+      'video/quicktime',
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Only PDF, image, and video files are supported')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('File size must be 20MB or less')
+      return
+    }
+
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+
+    let previewUrl = null
+    if (file.type.startsWith('image/')) {
+      previewUrl = URL.createObjectURL(file)
+      previewUrlRef.current = previewUrl
+    }
+
+    setAttachmentDraft({
+      file,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      previewUrl,
+    })
+  }
+
+  const handleAttachmentRemove = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    setAttachmentDraft(null)
+  }
+
+  const handleSearchSubmit = async () => {
+    if (!activeRoomId || !chatSearchTerm.trim()) {
+      setSearchMatches([])
+      return
+    }
+
+    try {
+      const result = await searchRoomMessages(activeRoomId, chatSearchTerm.trim(), 0, 100)
+      const matches = (result?.messages || []).map((message) => ({
+        id: message.id,
+        timestamp: message.timestamp,
+      }))
+      setSearchMatches(matches)
+      if (matches.length > 0) {
+        const firstId = String(matches[0].id)
+        setHighlightedMessageIds(new Set([firstId]))
+      }
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to search messages')
+    }
+  }
+
+  const handleSearchJump = (messageId) => {
+    if (!messageId) return
+    const key = String(messageId)
+    setHighlightedMessageIds((current) => new Set([...current, key]))
+    setTimeout(() => {
+      setHighlightedMessageIds((current) => {
+        const next = new Set(current)
+        next.delete(key)
+        return next
+      })
+    }, 2500)
+  }
+
+  const handleForwardToUsers = async (targetUserIds, selectedMessages = null) => {
+    if (!Array.isArray(targetUserIds) || targetUserIds.length === 0) return
+    const sourceMessages = Array.isArray(selectedMessages) && selectedMessages.length > 0
+      ? selectedMessages.filter((message) => message?.id)
+      : forwardTarget?.id
+        ? [forwardTarget]
+        : []
+    if (sourceMessages.length === 0) return
+
+    try {
+      await Promise.all(sourceMessages.map((message) => forwardMessageToUsers(message.id, targetUserIds)))
+      setForwardTarget(null)
+      setDraft('')
+      toast.success('Message forwarded')
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to forward message')
+    }
   }
 
   const loadOlderMessages = async () => {
@@ -548,9 +906,9 @@ function ChatDashboard() {
             onLogout={() => logout()}
           />
           <ChatWindow
-            className={mobileView === 'list' ? 'hidden md:grid' : 'grid'}
+            className={mobileView === 'list' ? 'hidden min-h-0 md:grid' : 'grid min-h-0'}
             activeUser={activeUser}
-            messages={activeMessages}
+            messages={filteredChatMessages}
             draft={draft}
             isConnected={isConnected}
             onDraftChange={handleDraftChange}
@@ -560,6 +918,28 @@ function ChatDashboard() {
             typing={typingUserId === activeUserId}
             messageEndRef={messageEndRef}
             onBack={() => setMobileView('list')}
+            searchTerm={chatSearchTerm}
+            onSearchChange={setChatSearchTerm}
+            searchMatches={searchMatches}
+            onSearchSubmit={handleSearchSubmit}
+            onSearchJump={handleSearchJump}
+            replyTarget={replyTarget}
+            forwardTarget={forwardTarget}
+            editingMessage={editingMessage}
+            attachmentDraft={attachmentDraft}
+            allUsers={users.filter((item) => item.userId !== user.userId)}
+            onClearReply={() => setReplyTarget(null)}
+            onClearForward={() => setForwardTarget(null)}
+            onCancelEdit={handleCancelEdit}
+            onAttachmentPick={handleAttachmentPick}
+            onAttachmentRemove={handleAttachmentRemove}
+            onEmojiPick={handleEmojiPick}
+            onReplyMessage={handleReplyMessage}
+            onForwardMessage={handleForwardMessage}
+            onEditMessage={handleEditMessage}
+            onDeleteForMe={handleDeleteForMe}
+            onDeleteForEveryone={handleDeleteForEveryone}
+            onForwardToUsers={handleForwardToUsers}
           />
         </section>
       </main>

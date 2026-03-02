@@ -14,6 +14,22 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     Page<Message> findByChatRoomIdOrderByCreatedAtDesc(Long chatRoomId, Pageable pageable);
 
+    @Query("""
+            select m from Message m
+             where m.chatRoom.id = :chatRoomId
+               and not exists (
+                    select 1 from HiddenMessage hm
+                     where hm.message.id = m.id
+                       and hm.user.id = :viewerId
+               )
+             order by m.createdAt desc
+            """)
+    Page<Message> findVisibleByChatRoomIdOrderByCreatedAtDesc(
+            @Param("chatRoomId") Long chatRoomId,
+            @Param("viewerId") Long viewerId,
+            Pageable pageable
+    );
+
     Optional<Message> findTopByChatRoomIdOrderByCreatedAtDesc(Long chatRoomId);
 
     long countByChatRoomIdAndReceiverIdAndStatusIn(
@@ -55,4 +71,24 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     );
 
     Optional<Message> findByIdAndReceiverId(Long id, Long receiverId);
+
+    Optional<Message> findByIdAndSenderId(Long id, Long senderId);
+
+    @Query("""
+            select m from Message m
+             where m.chatRoom.id = :chatRoomId
+               and lower(m.content) like lower(concat('%', :query, '%'))
+               and not exists (
+                    select 1 from HiddenMessage hm
+                     where hm.message.id = m.id
+                       and hm.user.id = :viewerId
+               )
+             order by m.createdAt desc
+            """)
+    Page<Message> searchVisibleRoomMessages(
+            @Param("chatRoomId") Long chatRoomId,
+            @Param("viewerId") Long viewerId,
+            @Param("query") String query,
+            Pageable pageable
+    );
 }
