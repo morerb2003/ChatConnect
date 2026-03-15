@@ -46,23 +46,23 @@ function ProfileUploadModal({ open, onClose, onUploaded }) {
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <h3 className="text-lg font-semibold text-slate-900">Upload Profile Picture</h3>
-        <p className="mt-1 text-sm text-slate-600">JPG or PNG only, maximum file size 5MB.</p>
+      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-950 dark:ring-1 dark:ring-slate-800">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Upload Profile Picture</h3>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">JPG or PNG only, maximum file size 5MB.</p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <input
             type="file"
             accept="image/jpeg,image/png"
             onChange={handleFileChange}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           />
-          {file ? <p className="text-xs text-slate-500">{file.name}</p> : null}
+          {file ? <p className="text-xs text-slate-500 dark:text-slate-400">{file.name}</p> : null}
           <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Cancel
             </button>

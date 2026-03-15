@@ -1,23 +1,71 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
+/* Tailwind v4: enable class-based dark mode by toggling `.dark` on `<html>`. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
+  :root {
+    font-size: 16px;
+    --page-padding: clamp(1rem, 2.5vw, 1.75rem);
+    --card-radius: clamp(1.5rem, 2.5vw, 2.75rem);
+    --page-text: #0f1f25;
+    --page-background:
+      radial-gradient(1200px 700px at 0% 0%, #ffe4b8 0%, transparent 70%),
+      radial-gradient(900px 600px at 100% 100%, #c5ffef 0%, transparent 70%),
+      linear-gradient(180deg, #fff8eb, #e8fff7);
+    --scroll-thumb: rgba(15, 23, 42, 0.6);
+  }
+
+  .dark {
+    --page-text: #e2e8f0;
+    --page-background:
+      radial-gradient(1200px 700px at 0% 0%, rgba(16, 185, 129, 0.18) 0%, transparent 70%),
+      radial-gradient(900px 600px at 100% 100%, rgba(56, 189, 248, 0.14) 0%, transparent 70%),
+      linear-gradient(180deg, #050b10, #07131a);
+    --scroll-thumb: rgba(148, 163, 184, 0.55);
+  }
+
   * {
     box-sizing: border-box;
   }
 
   body {
     margin: 0;
-    min-width: 320px;
     min-height: 100vh;
     font-family: 'Manrope', 'Segoe UI', Tahoma, sans-serif;
-    color: #0f1f25;
+    color: var(--page-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background:
-      radial-gradient(1200px 700px at 0% 0%, #ffe4b8 0%, transparent 70%),
-      radial-gradient(900px 600px at 100% 100%, #c5ffef 0%, transparent 70%),
-      linear-gradient(180deg, #fff8eb, #e8fff7);
+    background: var(--page-background);
+  }
+
+  @media (max-width: 768px) {
+    :root {
+      font-size: 15px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    :root {
+      font-size: 14px;
+    }
+  }
+}
+
+@layer utilities {
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background-color: var(--scroll-thumb);
+    border-radius: 999px;
   }
 }
 
@@ -30,5 +78,17 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }

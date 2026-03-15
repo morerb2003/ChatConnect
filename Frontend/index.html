@@ -5,6 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>chat</title>
+    <script>
+      ;(() => {
+        try {
+          const STORAGE_KEY = 'chatconnect_theme'
+          const stored = window.localStorage?.getItem(STORAGE_KEY)
+          const prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+
+          const theme = stored === 'dark' || stored === 'light' ? stored : prefersDark ? 'dark' : 'light'
+
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark')
+          }
+          document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light'
+        } catch {
+          // If storage is blocked, default to light and continue.
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

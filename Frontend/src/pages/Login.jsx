@@ -95,7 +95,7 @@ function Login() {
       footer={
         <>
           Don&apos;t have an account?{' '}
-          <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700">
+          <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200">
             Register
           </Link>
         </>
@@ -127,7 +127,7 @@ function Login() {
           rightElement={
             <button
               type="button"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
               onClick={() => setShowPassword((prev) => !prev)}
             >
               {showPassword ? 'Hide' : 'Show'}
@@ -135,19 +135,19 @@ function Login() {
           }
         />
 
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
             name="rememberMe"
             checked={formData.rememberMe}
             onChange={handleChange}
-            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-blue-400 dark:focus:ring-blue-400"
           />
           Remember me
         </label>
 
         {apiError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
             {apiError}
           </div>
         ) : null}
@@ -155,7 +155,7 @@ function Login() {
         <button
           type="submit"
           disabled={!isFormValid || loading}
-          className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 dark:disabled:bg-blue-900/40"
         >
           {loading ? (
             <>

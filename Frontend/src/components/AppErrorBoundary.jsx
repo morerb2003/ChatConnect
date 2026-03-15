@@ -22,10 +22,10 @@ class AppErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <main className="grid min-h-screen place-items-center bg-slate-100 px-4">
-          <section className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
-            <h1 className="text-lg font-semibold text-slate-900">Something went wrong</h1>
-            <p className="mt-2 text-sm text-slate-600">
+        <main className="grid min-h-screen supports-[height:100dvh]:min-h-[100dvh] place-items-center bg-slate-100 px-4 dark:bg-slate-950">
+          <section className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-6 shadow-sm dark:border-red-900/60 dark:bg-slate-950/70">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Something went wrong</h1>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Check the browser console for the exact error, then reload the page.
             </p>
             <button

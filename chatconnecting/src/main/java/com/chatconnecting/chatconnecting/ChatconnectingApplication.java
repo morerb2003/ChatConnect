@@ -6,8 +6,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class ChatconnectingApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(ChatconnectingApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(ChatconnectingApplication.class, args);
+        System.out.println("ChatConnectingApplication started successfully!");
+    }
 
 }
+    

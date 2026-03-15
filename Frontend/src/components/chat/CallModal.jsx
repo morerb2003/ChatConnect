@@ -50,9 +50,11 @@ function CallModal({ activeUser }) {
   return (
     <>
       {showIncoming ? (
-        <div className="fixed right-4 top-4 z-50 w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-          <p className="text-sm font-semibold text-slate-900">Incoming {incomingCall.data?.callMode || 'audio'} call</p>
-          <p className="mt-1 text-xs text-slate-500">{incomingCall.from}</p>
+        <div className="fixed left-4 right-4 top-4 z-50 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl md:left-auto md:right-4 md:w-full md:max-w-sm dark:border-slate-800 dark:bg-slate-950">
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+            Incoming {incomingCall.data?.callMode || 'audio'} call
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{incomingCall.from}</p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -73,8 +75,8 @@ function CallModal({ activeUser }) {
       ) : null}
 
       {showCallWindow ? (
-        <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/60 px-4">
-          <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl bg-slate-900 p-3 shadow-2xl">
+        <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/60 px-4 py-6">
+          <div className="relative w-full max-w-4xl max-h-[calc(100vh-3rem)] supports-[height:100dvh]:max-h-[calc(100dvh-3rem)] overflow-hidden overflow-y-auto rounded-2xl bg-slate-900 p-3 shadow-2xl">
             <div className="mb-2 flex items-center justify-between px-2 text-white">
               <div className="flex items-center gap-2">
                 <Avatar name={activeUser?.name || incomingCall?.from} imageUrl={activeUser?.profileImageUrl} size="sm" />
@@ -92,7 +94,7 @@ function CallModal({ activeUser }) {
               </button>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-2">
+            <div className="grid gap-2 min-[520px]:grid-cols-2">
               <div className="aspect-video rounded-xl bg-slate-800">
                 {callMode === 'video' ? (
                   <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full rounded-xl object-cover" />

@@ -94,3 +94,66 @@ export const uploadProfileImage = async (file) => {
     attachUserMessage(error, 'Failed to upload profile image')
   }
 }
+
+export const uploadChatAttachment = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const response = await api.post('/chat/attachments', formData, withAuth({
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }))
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to upload attachment')
+  }
+}
+
+export const editMessage = async (messageId, content) => {
+  try {
+    const response = await api.patch(`/chat/messages/${messageId}`, { content }, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to edit message')
+  }
+}
+
+export const deleteMessageForEveryone = async (messageId) => {
+  try {
+    const response = await api.delete(`/chat/messages/${messageId}`, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to delete message')
+  }
+}
+
+export const deleteMessageForMe = async (messageId) => {
+  try {
+    const response = await api.delete(`/chat/messages/${messageId}/me`, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to hide message')
+  }
+}
+
+export const forwardMessageToUsers = async (messageId, targetUserIds) => {
+  try {
+    const response = await api.post(`/chat/messages/${messageId}/forward`, { targetUserIds }, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to forward message')
+  }
+}
+
+export const searchRoomMessages = async (chatRoomId, query, page = 0, size = 30) => {
+  try {
+    const response = await api.get(`/chat/rooms/${chatRoomId}/search`, withAuth({
+      params: { query, page, size },
+    }))
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to search messages')
+  }
+}

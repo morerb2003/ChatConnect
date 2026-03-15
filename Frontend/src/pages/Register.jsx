@@ -133,7 +133,7 @@ function Register() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-blue-600 hover:text-blue-700">
+          <Link to="/login" className="font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200">
             Login
           </Link>
         </>
@@ -176,7 +176,7 @@ function Register() {
           rightElement={
             <button
               type="button"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
               onClick={() => setShowPassword((prev) => !prev)}
             >
               {showPassword ? 'Hide' : 'Show'}
@@ -185,12 +185,12 @@ function Register() {
         />
 
         <div className="space-y-1">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
             <div
               className={`h-full ${passwordStrength.color} ${passwordStrength.width} transition-all duration-300`}
             />
           </div>
-          <p className="text-xs text-slate-600">Password strength: {passwordStrength.label}</p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">Password strength: {passwordStrength.label}</p>
         </div>
 
         <InputField
@@ -206,7 +206,7 @@ function Register() {
           rightElement={
             <button
               type="button"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
               onClick={() => setShowConfirmPassword((prev) => !prev)}
             >
               {showConfirmPassword ? 'Hide' : 'Show'}
@@ -215,13 +215,13 @@ function Register() {
         />
 
         {apiError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
             {apiError}
           </div>
         ) : null}
 
         {successMessage ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
             {successMessage}
           </div>
         ) : null}
@@ -229,7 +229,7 @@ function Register() {
         <button
           type="submit"
           disabled={!isFormValid || loading}
-          className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          className="flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 dark:disabled:bg-blue-900/40"
         >
           {loading ? (
             <>
