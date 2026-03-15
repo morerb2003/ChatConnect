@@ -7,6 +7,7 @@ import { CallProvider } from '../context/CallContext'
 import useAuth from '../hooks/useAuth'
 import useChatSocket from '../hooks/useChatSocket'
 import useDebouncedCallback from '../hooks/useDebouncedCallback'
+<<<<<<< Updated upstream
 import {
   deleteMessageForMe,
   deleteMessageForEveryone,
@@ -21,6 +22,10 @@ import {
   uploadChatAttachment,
 } from '../services/chatService'
 import { buildStoredMessageContent, parseStoredMessageContent } from '../utils/messageContent'
+=======
+import { fetchMyProfile, fetchRoomMessages, fetchSidebarUsers, getOrCreateRoom, markRoomAsRead } from '../services/chatService'
+import { parseChatContent } from '../utils/chatContent'
+>>>>>>> Stashed changes
 
 const PAGE_SIZE = 30
 
@@ -179,6 +184,7 @@ function ChatDashboard() {
     (payload) => {
       const otherUserId = payload.senderId === user.userId ? payload.receiverId : payload.senderId
       const isIncoming = payload.senderId !== user.userId
+      const contentSummary = parseChatContent(payload.content).summary
 
       setUsers((prevUsers) =>
         sortUsers(
@@ -194,7 +200,11 @@ function ChatDashboard() {
             return {
               ...chatUser,
               chatRoomId: payload.chatRoomId,
+<<<<<<< Updated upstream
               lastMessagePreview: shortenPreview(parsedContent.text || (parsedContent.attachment?.name ? `Attachment: ${parsedContent.attachment.name}` : '')),
+=======
+              lastMessagePreview: shortenPreview(contentSummary),
+>>>>>>> Stashed changes
               lastMessageAt: payload.timestamp,
               unreadCount: shouldIncreaseUnread ? (chatUser.unreadCount || 0) + 1 : 0,
             }
@@ -209,7 +219,19 @@ function ChatDashboard() {
     async (payload) => {
       if (!payload?.chatRoomId) return
 
+<<<<<<< Updated upstream
       const mappedMessage = toViewMessage(payload, user.userId)
+=======
+      const parsedContent = parseChatContent(payload.content)
+      const mappedMessageBase = {
+        ...payload,
+        isOwn: payload.senderId === user.userId,
+        timestamp: payload.timestamp || new Date().toISOString(),
+        displayText: parsedContent.summary,
+        attachment: parsedContent.attachment,
+        meta: parsedContent.meta,
+      }
+>>>>>>> Stashed changes
 
       setMessagesByRoom((prev) => {
         const roomMessages = prev[payload.chatRoomId] || []
@@ -220,6 +242,7 @@ function ChatDashboard() {
         let nextMessages
         if (optimisticIndex >= 0) {
           nextMessages = [...roomMessages]
+<<<<<<< Updated upstream
           nextMessages[optimisticIndex] = mappedMessage
         } else {
           const existingIndex = roomMessages.findIndex((message) => message.id && message.id === payload.id)
@@ -232,6 +255,13 @@ function ChatDashboard() {
           } else {
             nextMessages = [...roomMessages, mappedMessage]
           }
+=======
+          nextMessages[optimisticIndex] = { ...mappedMessageBase, animateIn: false }
+        } else if (roomMessages.some((message) => message.id && message.id === payload.id)) {
+          nextMessages = roomMessages
+        } else {
+          nextMessages = [...roomMessages, { ...mappedMessageBase, animateIn: true }]
+>>>>>>> Stashed changes
         }
 
         return {
@@ -388,7 +418,22 @@ function ChatDashboard() {
   const loadRoomHistory = useCallback(
     async (chatRoomId, page, replace = false) => {
       const pageData = await fetchRoomMessages(chatRoomId, page, PAGE_SIZE)
+<<<<<<< Updated upstream
       const mappedMessages = pageData.messages.map((message) => toViewMessage(message, user.userId))
+=======
+      const mappedMessages = pageData.messages.map((message) => {
+        const parsedContent = parseChatContent(message.content)
+
+        return {
+          ...message,
+          isOwn: message.senderId === user.userId,
+          displayText: parsedContent.summary,
+          attachment: parsedContent.attachment,
+          meta: parsedContent.meta,
+          animateIn: false,
+        }
+      })
+>>>>>>> Stashed changes
 
       setMessagesByRoom((prev) => {
         const existing = prev[chatRoomId] || []
@@ -649,6 +694,11 @@ function ChatDashboard() {
       content: storedContent,
       status: 'SENT',
       timestamp: new Date().toISOString(),
+<<<<<<< Updated upstream
+=======
+      isOwn: true,
+      animateIn: true,
+>>>>>>> Stashed changes
     }
     const mappedOptimistic = toViewMessage(optimisticMessage, user.userId)
 
@@ -875,8 +925,8 @@ function ChatDashboard() {
 
   if (loadingUsers) {
     return (
-      <main className="grid min-h-screen place-items-center px-4">
-        <p className="text-sm font-medium text-slate-700">Loading conversations...</p>
+      <main className="grid min-h-screen supports-[height:100dvh]:min-h-[100dvh] place-items-center px-4">
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Loading conversations...</p>
       </main>
     )
   }
@@ -889,8 +939,13 @@ function ChatDashboard() {
       sendCallSignal={sendCallSignal}
       registerSignalHandler={registerCallSignalHandler}
     >
+<<<<<<< Updated upstream
       <main className="mx-auto min-h-screen max-w-7xl px-2 py-2 sm:px-4 sm:py-4 lg:px-6 lg:py-6">
         <section className="grid h-[calc(100dvh-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] sm:h-[calc(100dvh-2rem)] sm:rounded-3xl md:grid-cols-[280px_1fr] md:h-[calc(100dvh-2.5rem)] md:rounded-[28px] lg:grid-cols-[340px_1fr] lg:h-[calc(100dvh-3rem)]">
+=======
+      <main className="mx-auto min-h-screen supports-[height:100dvh]:min-h-[100dvh] max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
+        <section className="grid min-h-0 h-[calc(100vh-2rem)] sm:h-[calc(100vh-3rem)] supports-[height:100dvh]:h-[calc(100dvh-2rem)] sm:supports-[height:100dvh]:h-[calc(100dvh-3rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] md:grid-cols-[320px_1fr] md:rounded-[28px] dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_14px_30px_rgba(0,0,0,0.55)]">
+>>>>>>> Stashed changes
           <UserSidebar
             className={mobileView === 'chat' ? 'hidden md:flex' : 'flex'}
             users={filteredUsers}
@@ -906,7 +961,11 @@ function ChatDashboard() {
             onLogout={() => logout()}
           />
           <ChatWindow
+<<<<<<< Updated upstream
             className={mobileView === 'list' ? 'hidden min-h-0 md:grid' : 'grid min-h-0'}
+=======
+            className={mobileView === 'list' ? 'hidden md:flex' : 'flex'}
+>>>>>>> Stashed changes
             activeUser={activeUser}
             messages={filteredChatMessages}
             draft={draft}

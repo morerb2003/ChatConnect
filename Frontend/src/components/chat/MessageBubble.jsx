@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import { useRef } from 'react'
 
 function MessageBubble({
@@ -17,6 +18,11 @@ function MessageBubble({
 }) {
   const longPressTimerRef = useRef(null)
 
+=======
+import { getChatPreviewText } from '../../utils/chatContent'
+
+function MessageBubble({ message, isOwn, timeLabel }) {
+>>>>>>> Stashed changes
   const statusIcon = (() => {
     if (!isOwn) return null
     if (message.status === 'READ') return <span className="font-bold text-sky-300">{'\u2713\u2713'}</span>
@@ -24,6 +30,7 @@ function MessageBubble({
     return <span className="font-bold text-slate-300">{'\u2713'}</span>
   })()
 
+<<<<<<< Updated upstream
   const query = searchQuery.trim().toLowerCase()
   const text = message.displayContent || ''
   const renderHighlighted = (value) => {
@@ -64,6 +71,10 @@ function MessageBubble({
   const stop = (event) => {
     event.stopPropagation()
   }
+=======
+  const contentText = message.displayText || getChatPreviewText(message.content)
+  const animateClass = message.animateIn ? 'motion-reduce:animate-none animate-[messageIn_.22s_ease-out]' : ''
+>>>>>>> Stashed changes
 
   return (
     <div
@@ -76,6 +87,7 @@ function MessageBubble({
       onTouchEnd={clearLongPress}
     >
       <div
+<<<<<<< Updated upstream
         className={`max-w-[92%] rounded-2xl px-3.5 py-2.5 shadow-sm transition sm:max-w-[78%] md:max-w-[72%] lg:max-w-[66%] ${
           isOwn ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-900'
         } ${message.highlighted ? 'ring-2 ring-amber-300' : ''} ${isSelected ? 'ring-2 ring-sky-400 ring-offset-2' : ''}`}
@@ -135,6 +147,20 @@ function MessageBubble({
         )}
 
         <div className={`mt-1.5 flex items-center gap-2 text-[11px] ${isOwn ? 'text-emerald-100' : 'text-slate-500'}`}>
+=======
+        className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 shadow-sm sm:max-w-[72%] ${animateClass} ${
+          isOwn
+            ? 'bg-emerald-600 text-white'
+            : 'border border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-100'
+        }`}
+      >
+        <p className="whitespace-pre-wrap break-words text-sm">{contentText}</p>
+        <div
+          className={`mt-1.5 flex items-center gap-2 text-[11px] ${
+            isOwn ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'
+          }`}
+        >
+>>>>>>> Stashed changes
           <time>{timeLabel}</time>
           {message.editedAt && !message.deletedForEveryone ? <span>(edited)</span> : null}
           {statusIcon}

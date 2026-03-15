@@ -96,10 +96,10 @@ function ChatWindow({
 
   if (!activeUser) {
     return (
-      <section className="grid h-full place-items-center bg-gradient-to-b from-slate-50 to-emerald-50 p-6">
+      <section className="grid h-full place-items-center bg-gradient-to-b from-slate-50 to-emerald-50 p-6 dark:from-slate-950 dark:to-slate-900/70">
         <div className="max-w-sm text-center">
-          <h2 className="text-xl font-semibold text-slate-900">Choose a user to start chatting</h2>
-          <p className="mt-2 text-sm text-slate-600">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">Choose a user to start chatting</h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Select someone from the sidebar to create a room instantly and load message history.
           </p>
         </div>
@@ -107,6 +107,7 @@ function ChatWindow({
     )
   }
 
+<<<<<<< Updated upstream
   const jumpToMessage = (messageId) => {
     if (!messageId) return
     const key = String(messageId)
@@ -242,11 +243,22 @@ function ChatWindow({
           </div>
         ) : null}
 
+=======
+  return (
+    <section
+      className={`flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-gradient-to-b from-white to-emerald-50/50 dark:from-slate-950 dark:to-slate-900/60 ${className}`}
+    >
+      <div className="shrink-0">
+        <ChatHeader activeUser={activeUser} onBack={onBack} />
+      </div>
+
+      <div className="scrollbar-slim flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-4">
+>>>>>>> Stashed changes
         {hasMoreHistory ? (
           <button
             type="button"
             onClick={onLoadOlder}
-            className="mx-auto mb-3 block rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            className="mx-auto mb-3 block rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-900"
           >
             Load older messages
           </button>
@@ -254,10 +266,13 @@ function ChatWindow({
 
         <div className="space-y-2.5">
           {messages.length === 0 ? (
-            <div className="grid min-h-40 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 text-center">
-              <p className="text-sm text-slate-500">No messages yet. Send a message to start the conversation.</p>
+            <div className="grid min-h-40 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 text-center dark:border-slate-800 dark:bg-slate-950/40">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                No messages yet. Send a message to start the conversation.
+              </p>
             </div>
           ) : null}
+<<<<<<< Updated upstream
           {groupedItems.map((item) =>
             item.type === 'separator' ? (
               <div key={item.key} className="py-1 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -294,6 +309,20 @@ function ChatWindow({
             ),
           )}
           {typing ? <p className="text-xs text-slate-500">{activeUser.name} is typing...</p> : null}
+=======
+          {messages.map((message) => (
+            <MessageBubble
+              key={`${message.id ?? message.clientMessageId}-${message.timestamp}`}
+              message={message}
+              isOwn={message.isOwn}
+              timeLabel={new Date(message.timestamp).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            />
+          ))}
+          {typing ? <p className="text-xs text-slate-500 dark:text-slate-400">{activeUser.name} is typing...</p> : null}
+>>>>>>> Stashed changes
           <div ref={messageEndRef} />
         </div>
 
@@ -308,6 +337,7 @@ function ChatWindow({
         ) : null}
       </div>
 
+<<<<<<< Updated upstream
       <form onSubmit={onSend} className="border-t border-slate-200/90 bg-white/95 px-2.5 py-2.5 backdrop-blur sm:px-4 sm:py-3">
         {replyTarget ? (
           <div className="mb-2 flex items-start justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-slate-700">
@@ -420,6 +450,27 @@ function ChatWindow({
             {editingMessage ? 'Save' : 'Send'}
           </button>
         </div>
+=======
+      <form
+        onSubmit={onSend}
+        className="shrink-0 flex items-end gap-2 border-t border-slate-200 bg-white px-3 py-3 sm:px-4 dark:border-slate-800 dark:bg-slate-950/70"
+      >
+        <textarea
+          value={draft}
+          onChange={(event) => onDraftChange(event.target.value)}
+          placeholder={`Message ${activeUser.name}`}
+          rows={1}
+          aria-label={`Message ${activeUser.name}`}
+          className="max-h-28 min-h-11 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400"
+        />
+        <button
+          type="submit"
+          disabled={!draft.trim() || !isConnected}
+          className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+        >
+          Send
+        </button>
+>>>>>>> Stashed changes
       </form>
 
       {showForwardPicker ? (
