@@ -1,19 +1,26 @@
 package com.chatconnecting.chatconnecting.message.service;
 
 import com.chatconnecting.chatconnecting.chat.ChatRoom;
+import com.chatconnecting.chatconnecting.chat.ChatRoomType;
 import com.chatconnecting.chatconnecting.chat.service.ChatService;
-import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
 import com.chatconnecting.chatconnecting.exception.BadRequestException;
+import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
+import com.chatconnecting.chatconnecting.exception.ResourceNotFoundException;
 import com.chatconnecting.chatconnecting.message.HiddenMessage;
 import com.chatconnecting.chatconnecting.message.HiddenMessageRepository;
 import com.chatconnecting.chatconnecting.message.Message;
+import com.chatconnecting.chatconnecting.message.MessageReaction;
+import com.chatconnecting.chatconnecting.message.MessageReactionRepository;
 import com.chatconnecting.chatconnecting.message.MessageRepository;
 import com.chatconnecting.chatconnecting.message.MessageStatus;
+import com.chatconnecting.chatconnecting.message.StoredMessageContent;
 import com.chatconnecting.chatconnecting.message.dto.AttachmentUploadResponse;
 import com.chatconnecting.chatconnecting.message.dto.ChatMessageRequest;
 import com.chatconnecting.chatconnecting.message.dto.ChatMessageResponse;
 import com.chatconnecting.chatconnecting.message.dto.DeliveryAckRequest;
 import com.chatconnecting.chatconnecting.message.dto.ForwardMessageRequest;
+import com.chatconnecting.chatconnecting.message.dto.MessageReactionRequest;
+import com.chatconnecting.chatconnecting.message.dto.MessageReactionResponse;
 import com.chatconnecting.chatconnecting.message.dto.MessagePageResponse;
 import com.chatconnecting.chatconnecting.message.dto.ReadMessageRequest;
 import com.chatconnecting.chatconnecting.message.dto.ReadReceiptEvent;
@@ -30,9 +37,10 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -52,10 +60,13 @@ import org.springframework.web.multipart.MultipartFile;
 public class MessageService {
 
     private static final Logger log = LoggerFactory.getLogger(MessageService.class);
+    private static final String MESSAGE_DESTINATION = "/queue/messages";
+    private static final String STATUS_DESTINATION = "/queue/status";
+    private static final String TYPING_DESTINATION = "/queue/typing";
+    private static final String READ_RECEIPTS_DESTINATION = "/queue/read-receipts";
     private static final long MAX_ATTACHMENT_SIZE_BYTES = 20L * 1024L * 1024L;
     private static final long EDIT_WINDOW_MINUTES = 15L;
     private static final long DELETE_FOR_EVERYONE_WINDOW_MINUTES = 60L;
-    private static final String META_PREFIX = "__CHATCONNECT_META__:";
     private static final Path CHAT_UPLOAD_DIR = Paths.get("uploads", "chat");
     private static final Set<String> ALLOWED_ATTACHMENT_TYPES = Set.of(
             "application/pdf",
@@ -79,6 +90,7 @@ public class MessageService {
     );
 
     private final MessageRepository messageRepository;
+    private final MessageReactionRepository messageReactionRepository;
     private final HiddenMessageRepository hiddenMessageRepository;
     private final ChatService chatService;
     private final PresenceService presenceService;
@@ -120,15 +132,17 @@ public class MessageService {
     public ChatMessageResponse sendMessage(String senderPrincipalName, ChatMessageRequest request) {
         User sender = chatService.getUserByEmail(senderPrincipalName);
         ChatRoom room = resolveRoom(sender, request);
-        User receiver = room.getOtherParticipant(sender.getId());
-
-        if (!receiver.getId().equals(request.getReceiverId())) {
-            throw new BadRequestException("Receiver does not belong to this room");
-        }
-
         String content = request.getContent() == null ? "" : request.getContent().trim();
         if (content.isEmpty()) {
             throw new BadRequestException("Message content cannot be empty");
+        }
+
+        User receiver = null;
+        if (!room.isGroupRoom()) {
+            receiver = room.getOtherParticipant(sender.getId());
+            if (request.getReceiverId() != null && !receiver.getId().equals(request.getReceiverId())) {
+                throw new BadRequestException("Receiver does not belong to this room");
+            }
         }
 
         Message message = Message.builder()
@@ -141,30 +155,30 @@ public class MessageService {
 
         Message saved = messageRepository.saveAndFlush(message);
         ChatMessageResponse payload = toResponse(saved, request.getClientMessageId());
+        payload.setEventType(room.isGroupRoom() ? "groupMessage" : "message");
         log.debug("Persisted message id={} room={} sender={} receiver={}",
                 payload.getId(),
                 payload.getChatRoomId(),
                 payload.getSenderId(),
                 payload.getReceiverId());
 
-        String senderDestinationUser = resolveUserDestinationKey(sender);
-        String receiverDestinationUser = resolveUserDestinationKey(receiver);
-
-        messagingTemplate.convertAndSendToUser(senderDestinationUser, "/queue/messages", payload);
-        messagingTemplate.convertAndSendToUser(receiverDestinationUser, "/queue/messages", payload);
-        log.debug("Broadcasted message id={} to senderDestination={} receiverDestination={}",
-                payload.getId(),
-                senderDestinationUser,
-                receiverDestinationUser);
-
+        broadcastToRoom(room, MESSAGE_DESTINATION, payload);
         return payload;
     }
 
     @Transactional
     public ChatMessageResponse markMessageAsDelivered(String receiverEmail, DeliveryAckRequest request) {
         User receiver = chatService.getUserByEmail(receiverEmail);
-        Message message = messageRepository.findByIdAndReceiverId(request.getMessageId(), receiver.getId())
-                .orElseThrow(() -> new BadRequestException("Message not found"));
+        Message message = findAuthorizedMessage(request.getMessageId(), receiver);
+        if (message.getSender().getId().equals(receiver.getId())) {
+            return toResponse(message, null);
+        }
+
+        if (!message.getChatRoom().isGroupRoom()) {
+            if (message.getReceiver() == null || !receiver.getId().equals(message.getReceiver().getId())) {
+                throw new BadRequestException("Message not found");
+            }
+        }
 
         if (message.getStatus() == MessageStatus.SENT) {
             message.setStatus(MessageStatus.DELIVERED);
@@ -173,36 +187,43 @@ public class MessageService {
         }
 
         ChatMessageResponse payload = toResponse(message, null);
-        messagingTemplate.convertAndSendToUser(
-                resolveUserDestinationKey(message.getSender()),
-                "/queue/status",
-                payload
-        );
+        payload.setEventType("messageDelivered");
+        broadcastToRoom(message.getChatRoom(), STATUS_DESTINATION, payload);
         return payload;
     }
 
     @Transactional
     public ChatMessageResponse markMessageAsRead(String readerEmail, ReadMessageRequest request) {
         User reader = chatService.getUserByEmail(readerEmail);
-        Message message = messageRepository.findByIdAndReceiverId(request.getMessageId(), reader.getId())
-                .orElseThrow(() -> new BadRequestException("Message not found"));
+        Message message = findAuthorizedMessage(request.getMessageId(), reader);
+        if (message.getSender().getId().equals(reader.getId())) {
+            return toResponse(message, null);
+        }
 
-        if (message.getStatus() != MessageStatus.READ) {
-            LocalDateTime now = LocalDateTime.now();
-            if (message.getStatus() == MessageStatus.SENT) {
-                message.setDeliveredAt(now);
-            }
+        LocalDateTime now = LocalDateTime.now();
+        boolean changed = false;
+        if (message.getStatus() == MessageStatus.SENT) {
+            message.setDeliveredAt(now);
+            message.setStatus(MessageStatus.DELIVERED);
+            changed = true;
+        }
+        if (!message.getSeenBy().stream().anyMatch(user -> user.getId().equals(reader.getId()))) {
+            message.getSeenBy().add(reader);
+            changed = true;
+        }
+        if (message.getStatus() != MessageStatus.READ || message.getReadAt() == null) {
             message.setStatus(MessageStatus.READ);
             message.setReadAt(now);
+            changed = true;
+        }
+        if (changed) {
             message = messageRepository.saveAndFlush(message);
         }
 
         ChatMessageResponse payload = toResponse(message, null);
-        messagingTemplate.convertAndSendToUser(
-                resolveUserDestinationKey(message.getSender()),
-                "/queue/status",
-                payload
-        );
+        payload.setEventType("messageSeen");
+        broadcastToRoom(message.getChatRoom(), STATUS_DESTINATION, payload);
+        broadcastReadReceipt(message.getChatRoom(), reader, now, List.of(message.getId()));
         return payload;
     }
 
@@ -210,58 +231,77 @@ public class MessageService {
     public int markMessagesAsRead(String readerEmail, Long chatRoomId) {
         User reader = chatService.getUserByEmail(readerEmail);
         ChatRoom room = chatService.getAuthorizedRoom(chatRoomId, reader);
-        User otherParticipant = room.getOtherParticipant(reader.getId());
-
-        LocalDateTime readAt = LocalDateTime.now();
-        int updatedCount = messageRepository.markMessagesAsRead(
+        List<Message> unreadMessages = messageRepository.findUnreadMessagesForViewer(
                 room.getId(),
                 reader.getId(),
-                otherParticipant.getId(),
-                readAt
+                ChatRoomType.DIRECT,
+                ChatRoomType.GROUP
         );
 
-        if (updatedCount > 0) {
-            messagingTemplate.convertAndSendToUser(
-                    resolveUserDestinationKey(otherParticipant),
-                    "/queue/read-receipts",
-                    ReadReceiptEvent.builder()
-                            .chatRoomId(room.getId())
-                            .readerId(reader.getId())
-                            .readAt(readAt)
-                            .build()
-            );
+        if (unreadMessages.isEmpty()) {
+            return 0;
         }
-        return updatedCount;
+
+        LocalDateTime readAt = LocalDateTime.now();
+        for (Message message : unreadMessages) {
+            if (message.getStatus() == MessageStatus.SENT) {
+                message.setDeliveredAt(readAt);
+            }
+            message.setStatus(MessageStatus.READ);
+            message.setReadAt(readAt);
+            if (!message.getSeenBy().stream().anyMatch(user -> user.getId().equals(reader.getId()))) {
+                message.getSeenBy().add(reader);
+            }
+        }
+
+        List<Message> savedMessages = messageRepository.saveAllAndFlush(unreadMessages);
+        List<Long> messageIds = savedMessages.stream().map(Message::getId).toList();
+
+        for (Message message : savedMessages) {
+            ChatMessageResponse payload = toResponse(message, null);
+            payload.setEventType("messageSeen");
+            broadcastToRoom(room, STATUS_DESTINATION, payload);
+        }
+        broadcastReadReceipt(room, reader, readAt, messageIds);
+        return savedMessages.size();
     }
 
     @Transactional(readOnly = true)
     public void sendTypingEvent(String senderEmail, TypingEventRequest request) {
-        if (request.getReceiverId() == null) {
-            throw new BadRequestException("Receiver id is required");
-        }
-
         User sender = chatService.getUserByEmail(senderEmail);
-        if (sender.getId().equals(request.getReceiverId())) {
-            return;
-        }
+        List<User> recipients;
 
-        User receiver = chatService.getUserById(request.getReceiverId());
         if (request.getChatRoomId() != null) {
             ChatRoom room = chatService.getAuthorizedRoom(request.getChatRoomId(), sender);
-            if (!room.getOtherParticipant(sender.getId()).getId().equals(receiver.getId())) {
-                throw new BadRequestException("Invalid receiver for this room");
+            recipients = room.getParticipants().stream()
+                    .filter(user -> !user.getId().equals(sender.getId()))
+                    .toList();
+
+            if (!room.isGroupRoom() && request.getReceiverId() != null) {
+                User receiver = room.getOtherParticipant(sender.getId());
+                if (!receiver.getId().equals(request.getReceiverId())) {
+                    throw new BadRequestException("Invalid receiver for this room");
+                }
             }
+        } else {
+            if (request.getReceiverId() == null) {
+                throw new BadRequestException("Receiver id is required");
+            }
+            if (sender.getId().equals(request.getReceiverId())) {
+                return;
+            }
+            recipients = List.of(chatService.getUserById(request.getReceiverId()));
         }
 
-        messagingTemplate.convertAndSendToUser(
-                resolveUserDestinationKey(receiver),
-                "/queue/typing",
-                TypingEventResponse.builder()
-                        .chatRoomId(request.getChatRoomId())
-                        .senderId(sender.getId())
-                        .typing(request.isTyping())
-                .build()
-        );
+        TypingEventResponse payload = TypingEventResponse.builder()
+                .chatRoomId(request.getChatRoomId())
+                .senderId(sender.getId())
+                .typing(request.isTyping())
+                .build();
+
+        for (User recipient : recipients) {
+            messagingTemplate.convertAndSendToUser(resolveUserDestinationKey(recipient), TYPING_DESTINATION, payload);
+        }
     }
 
     @Transactional
@@ -280,7 +320,7 @@ public class MessageService {
         Message saved = messageRepository.saveAndFlush(message);
         ChatMessageResponse payload = toResponse(saved, null);
         payload.setEventType("messageUpdated");
-        broadcastMessage(payload);
+        broadcastToRoom(saved.getChatRoom(), MESSAGE_DESTINATION, payload);
         return payload;
     }
 
@@ -291,11 +331,11 @@ public class MessageService {
                 .orElseThrow(() -> new BadRequestException("Message not found"));
         validateDeleteWindow(message);
 
-        message.setContent("__CHATCONNECT_META__:{\"v\":1,\"text\":\"\",\"deletedForEveryone\":true}");
+        message.setContent(StoredMessageContent.buildDeletedPayload());
         Message saved = messageRepository.saveAndFlush(message);
         ChatMessageResponse payload = toResponse(saved, null);
         payload.setEventType("messageDeleted");
-        broadcastMessage(payload);
+        broadcastToRoom(saved.getChatRoom(), MESSAGE_DESTINATION, payload);
         return payload;
     }
 
@@ -380,10 +420,55 @@ public class MessageService {
             ChatMessageResponse payload = toResponse(created, null);
             payload.setEventType("messageForwarded");
             forwardedMessages.add(payload);
-            broadcastMessage(payload);
+            broadcastToRoom(room, MESSAGE_DESTINATION, payload);
         }
 
         return forwardedMessages;
+    }
+
+    @Transactional
+    public ChatMessageResponse addReaction(String requesterEmail, Long messageId, MessageReactionRequest request) {
+        User requester = chatService.getUserByEmail(requesterEmail);
+        Message message = findAuthorizedMessage(messageId, requester);
+        String emoji = normalizeEmoji(request.getEmoji());
+
+        if (messageReactionRepository.findByMessageIdAndUserIdAndEmoji(messageId, requester.getId(), emoji).isEmpty()) {
+            messageReactionRepository.saveAndFlush(MessageReaction.builder()
+                    .message(message)
+                    .user(requester)
+                    .emoji(emoji)
+                    .build());
+        }
+
+        Message updatedMessage = messageRepository.findDetailedById(messageId)
+                .orElseThrow(() -> new BadRequestException("Message not found"));
+        ChatMessageResponse payload = toResponse(updatedMessage, null);
+        payload.setEventType("messageReactionUpdated");
+        broadcastToRoom(updatedMessage.getChatRoom(), MESSAGE_DESTINATION, payload);
+        return payload;
+    }
+
+    @Transactional
+    public ChatMessageResponse removeReaction(String requesterEmail, Long messageId, String emoji) {
+        User requester = chatService.getUserByEmail(requesterEmail);
+        Message message = findAuthorizedMessage(messageId, requester);
+        String normalizedEmoji = normalizeEmoji(emoji);
+
+        MessageReaction reaction = messageReactionRepository.findByMessageIdAndUserIdAndEmoji(
+                        messageId,
+                        requester.getId(),
+                        normalizedEmoji
+                )
+                .orElseThrow(() -> new ResourceNotFoundException("Reaction not found"));
+        messageReactionRepository.delete(reaction);
+        messageReactionRepository.flush();
+
+        Message updatedMessage = messageRepository.findDetailedById(messageId)
+                .orElseThrow(() -> new BadRequestException("Message not found"));
+        ChatMessageResponse payload = toResponse(updatedMessage, null);
+        payload.setEventType("messageReactionUpdated");
+        broadcastToRoom(updatedMessage.getChatRoom(), MESSAGE_DESTINATION, payload);
+        return payload;
     }
 
     @Transactional
@@ -428,12 +513,11 @@ public class MessageService {
     }
 
     private ChatRoom resolveRoom(User sender, ChatMessageRequest request) {
-        if (request.getReceiverId() == null) {
-            throw new BadRequestException("Receiver id is required");
-        }
-
         if (request.getChatRoomId() != null) {
             return chatService.getAuthorizedRoom(request.getChatRoomId(), sender);
+        }
+        if (request.getReceiverId() == null) {
+            throw new BadRequestException("Receiver id is required");
         }
         return chatService.getOrCreateRoom(sender, request.getReceiverId());
     }
@@ -443,19 +527,41 @@ public class MessageService {
     }
 
     private ChatMessageResponse toResponse(Message message, String clientMessageId) {
+        StoredMessageContent.ParsedContent parsed = StoredMessageContent.parse(message.getContent());
         return ChatMessageResponse.builder()
                 .id(message.getId())
                 .clientMessageId(clientMessageId)
                 .chatRoomId(message.getChatRoom().getId())
+                .roomType(message.getChatRoom().getRoomType())
+                .roomName(message.getChatRoom().isGroupRoom() ? message.getChatRoom().getName() : null)
                 .senderId(message.getSender().getId())
-                .receiverId(message.getReceiver().getId())
+                .receiverId(message.getReceiver() != null ? message.getReceiver().getId() : null)
                 .content(message.getContent())
+                .messageType(parsed.messageType())
+                .fileUrl(parsed.attachment() != null ? parsed.attachment().url() : null)
+                .fileName(parsed.attachment() != null ? parsed.attachment().name() : null)
+                .fileContentType(parsed.attachment() != null ? parsed.attachment().contentType() : null)
                 .status(message.getStatus())
                 .eventType("message")
                 .timestamp(message.getCreatedAt())
                 .deliveredAt(message.getDeliveredAt())
                 .readAt(message.getReadAt())
+                .seenBy(message.getSeenBy().stream().map(User::getId).sorted().toList())
+                .reactions(message.getReactions().stream()
+                        .sorted(Comparator.comparing(MessageReaction::getEmoji).thenComparing(reaction -> reaction.getUser().getId()))
+                        .map(reaction -> MessageReactionResponse.builder()
+                                .userId(reaction.getUser().getId())
+                                .emoji(reaction.getEmoji())
+                                .build())
+                        .toList())
                 .build();
+    }
+
+    private Message findAuthorizedMessage(Long messageId, User requester) {
+        Message message = messageRepository.findDetailedById(messageId)
+                .orElseThrow(() -> new BadRequestException("Message not found"));
+        chatService.getAuthorizedRoom(message.getChatRoom().getId(), requester);
+        return message;
     }
 
     private String resolveUserDestinationKey(User user) {
@@ -488,35 +594,30 @@ public class MessageService {
     }
 
     private String toForwardedContent(String originalContent) {
-        String source = originalContent == null ? "" : originalContent;
-        if (source.startsWith(META_PREFIX)) {
-            String payload = source.substring(META_PREFIX.length());
-            if (payload.contains("\"forwarded\":")) {
-                payload = payload.replaceAll("\"forwarded\"\\s*:\\s*(true|false)", "\"forwarded\":true");
-                return META_PREFIX + payload;
-            }
-            if (payload.endsWith("}")) {
-                return META_PREFIX + payload.substring(0, payload.length() - 1) + ",\"forwarded\":true}";
-            }
-            return source;
+        return StoredMessageContent.asForwarded(originalContent);
+    }
+
+    private String normalizeEmoji(String emoji) {
+        String normalized = StringUtils.trimWhitespace(emoji);
+        if (!StringUtils.hasText(normalized)) {
+            throw new BadRequestException("Emoji is required");
         }
-
-        return META_PREFIX + "{\"v\":1,\"text\":\"" + escapeJson(source) + "\",\"forwarded\":true}";
+        return normalized;
     }
 
-    private String escapeJson(String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\r", "\\r")
-                .replace("\n", "\\n")
-                .replace("\t", "\\t");
+    private void broadcastReadReceipt(ChatRoom room, User reader, LocalDateTime readAt, List<Long> messageIds) {
+        ReadReceiptEvent event = ReadReceiptEvent.builder()
+                .chatRoomId(room.getId())
+                .readerId(reader.getId())
+                .readAt(readAt)
+                .messageIds(messageIds)
+                .build();
+        broadcastToRoom(room, READ_RECEIPTS_DESTINATION, event);
     }
 
-    private void broadcastMessage(ChatMessageResponse payload) {
-        User sender = chatService.getUserById(payload.getSenderId());
-        User receiver = chatService.getUserById(payload.getReceiverId());
-        messagingTemplate.convertAndSendToUser(resolveUserDestinationKey(sender), "/queue/messages", payload);
-        messagingTemplate.convertAndSendToUser(resolveUserDestinationKey(receiver), "/queue/messages", payload);
+    private void broadcastToRoom(ChatRoom room, String destination, Object payload) {
+        for (User participant : room.getParticipants()) {
+            messagingTemplate.convertAndSendToUser(resolveUserDestinationKey(participant), destination, payload);
+        }
     }
 }

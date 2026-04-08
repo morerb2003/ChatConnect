@@ -1,19 +1,7 @@
 package com.chatconnecting.chatconnecting.chat;
 
-import com.chatconnecting.chatconnecting.chat.dto.ChatRoomResponse;
-import com.chatconnecting.chatconnecting.chat.dto.UserChatSummaryResponse;
-import com.chatconnecting.chatconnecting.chat.service.ChatService;
-import com.chatconnecting.chatconnecting.common.dto.MessageResponse;
-import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
-import com.chatconnecting.chatconnecting.message.dto.AttachmentUploadResponse;
-import com.chatconnecting.chatconnecting.message.dto.ChatMessageResponse;
-import com.chatconnecting.chatconnecting.message.dto.ForwardMessageRequest;
-import com.chatconnecting.chatconnecting.message.dto.MessagePageResponse;
-import com.chatconnecting.chatconnecting.message.dto.MessageUpdateRequest;
-import com.chatconnecting.chatconnecting.message.service.MessageService;
-import jakarta.validation.Valid;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +16,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import com.chatconnecting.chatconnecting.chat.dto.AssignAdminRequest;
+import com.chatconnecting.chatconnecting.chat.dto.ChatRoomResponse;
+import com.chatconnecting.chatconnecting.chat.dto.CreateGroupRequest;
+import com.chatconnecting.chatconnecting.chat.dto.UpdateGroupMembersRequest;
+import com.chatconnecting.chatconnecting.chat.dto.UserChatSummaryResponse;
+import com.chatconnecting.chatconnecting.chat.service.ChatService;
+import com.chatconnecting.chatconnecting.common.dto.MessageResponse;
+import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
+import com.chatconnecting.chatconnecting.message.dto.AttachmentUploadResponse;
+import com.chatconnecting.chatconnecting.message.dto.ChatMessageResponse;
+import com.chatconnecting.chatconnecting.message.dto.ForwardMessageRequest;
+import com.chatconnecting.chatconnecting.message.dto.MessagePageResponse;
+import com.chatconnecting.chatconnecting.message.dto.MessageReactionRequest;
+import com.chatconnecting.chatconnecting.message.dto.MessageUpdateRequest;
+import com.chatconnecting.chatconnecting.message.service.MessageService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -54,6 +61,63 @@ public class ChatController {
         String email = requireAuthEmail(authentication);
         log.info("Chat room request: currentUser={}, receiverUserId={}", email, userId);
         return ResponseEntity.ok(chatService.getOrCreateChatRoom(email, userId));
+    }
+
+    @PostMapping("/groups")
+    public ResponseEntity<ChatRoomResponse> createGroup(
+            @Valid @RequestBody CreateGroupRequest request,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(chatService.createGroup(email, request));
+    }
+
+    @PostMapping("/groups/{chatRoomId}/members")
+    public ResponseEntity<ChatRoomResponse> addGroupMembers(
+            @PathVariable Long chatRoomId,
+            @Valid @RequestBody UpdateGroupMembersRequest request,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(chatService.addUsersToGroup(email, chatRoomId, request));
+    }
+
+    @DeleteMapping("/groups/{chatRoomId}/members/{memberId}")
+    public ResponseEntity<ChatRoomResponse> removeGroupMember(
+            @PathVariable Long chatRoomId,
+            @PathVariable Long memberId,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(chatService.removeUserFromGroup(email, chatRoomId, memberId));
+    }
+
+    @PostMapping("/groups/{chatRoomId}/leave")
+    public ResponseEntity<ChatRoomResponse> leaveGroup(
+            @PathVariable Long chatRoomId,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(chatService.leaveGroup(email, chatRoomId));
+    }
+
+    @DeleteMapping("/groups/{chatRoomId}")
+    public ResponseEntity<ChatRoomResponse> deleteGroup(
+            @PathVariable Long chatRoomId,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(chatService.deleteGroup(email, chatRoomId));
+    }
+
+    @PostMapping("/groups/{chatRoomId}/admin")
+    public ResponseEntity<ChatRoomResponse> assignAdmin(
+            @PathVariable Long chatRoomId,
+            @Valid @RequestBody AssignAdminRequest request,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(chatService.assignAdmin(email, chatRoomId, request.getAdminId()));
     }
 
     @GetMapping("/rooms/{chatRoomId}/messages")
@@ -128,6 +192,26 @@ public class ChatController {
     ) {
         String email = requireAuthEmail(authentication);
         return ResponseEntity.ok(messageService.searchMessages(email, chatRoomId, query, page, size));
+    }
+
+    @PostMapping("/messages/{messageId}/reactions")
+    public ResponseEntity<ChatMessageResponse> addReaction(
+            @PathVariable Long messageId,
+            @Valid @RequestBody MessageReactionRequest request,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(messageService.addReaction(email, messageId, request));
+    }
+
+    @DeleteMapping("/messages/{messageId}/reactions")
+    public ResponseEntity<ChatMessageResponse> removeReaction(
+            @PathVariable Long messageId,
+            @RequestParam String emoji,
+            Authentication authentication
+    ) {
+        String email = requireAuthEmail(authentication);
+        return ResponseEntity.ok(messageService.removeReaction(email, messageId, emoji));
     }
 
     @PostMapping("/attachments")

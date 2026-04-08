@@ -7,8 +7,10 @@ import { CallProvider } from '../context/CallContext'
 import useAuth from '../hooks/useAuth'
 import useChatSocket from '../hooks/useChatSocket'
 import useDebouncedCallback from '../hooks/useDebouncedCallback'
-<<<<<<< Updated upstream
 import {
+  addGroupMembers,
+  addMessageReaction,
+  createGroup,
   deleteMessageForMe,
   deleteMessageForEveryone,
   editMessage,
@@ -18,14 +20,12 @@ import {
   forwardMessageToUsers,
   getOrCreateRoom,
   markRoomAsRead,
+  removeGroupMember,
+  removeMessageReaction,
   searchRoomMessages,
   uploadChatAttachment,
 } from '../services/chatService'
 import { buildStoredMessageContent, parseStoredMessageContent } from '../utils/messageContent'
-=======
-import { fetchMyProfile, fetchRoomMessages, fetchSidebarUsers, getOrCreateRoom, markRoomAsRead } from '../services/chatService'
-import { parseChatContent } from '../utils/chatContent'
->>>>>>> Stashed changes
 
 const PAGE_SIZE = 30
 
@@ -38,6 +38,20 @@ const sortUsers = (users) =>
     if (!right.lastMessageAt) return -1
     return new Date(right.lastMessageAt).getTime() - new Date(left.lastMessageAt).getTime()
   })
+
+const isGroupChat = (chatUser) => chatUser?.roomType === 'GROUP'
+
+const resolveReplySenderName = (activeUser, allUsers, currentUserId, message) => {
+  if (message?.senderId === currentUserId) return 'You'
+  if (isGroupChat(activeUser)) {
+    const member = activeUser?.members?.find((item) => item.userId === message?.senderId)
+    if (member?.name) return member.name
+  }
+  const directUser = allUsers.find((item) => item.roomType !== 'GROUP' && item.userId === message?.senderId)
+  return directUser?.name || activeUser?.name || 'User'
+}
+
+const mergeSeenBy = (existingSeenBy = [], readerId) => [...new Set([...(existingSeenBy || []), readerId])]
 
 const shortenPreview = (text) => {
   if (!text) return ''
@@ -79,6 +93,8 @@ const toViewMessage = (message, currentUserId) => {
       : null,
     deletedForEveryone: parsed.deletedForEveryone,
     editedAt: parsed.editedAt,
+    seenBy: Array.isArray(message.seenBy) ? message.seenBy : [],
+    reactions: Array.isArray(message.reactions) ? message.reactions : [],
   }
 }
 
@@ -90,7 +106,7 @@ function ChatDashboard() {
   const [historyByRoom, setHistoryByRoom] = useState({})
   const [draft, setDraft] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [typingUserId, setTypingUserId] = useState(null)
+  const [typingByRoom, setTypingByRoom] = useState({})
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [currentUserProfile, setCurrentUserProfile] = useState(null)
   const [mobileView, setMobileView] = useState('list')
@@ -110,6 +126,7 @@ function ChatDashboard() {
   const readAckedMessageIdsRef = useRef(new Set())
   const activeMessagesRef = useRef([])
   const callSignalHandlerRef = useRef(() => {})
+  const loadUsersRef = useRef(async () => {})
   const previewUrlRef = useRef(null)
 
   useEffect(() => {
@@ -172,9 +189,41 @@ function ChatDashboard() {
     const query = searchTerm.trim().toLowerCase()
     if (!query) return users
     return users.filter((chatUser) => {
-      return chatUser.name.toLowerCase().includes(query) || chatUser.email.toLowerCase().includes(query)
+      return (
+        chatUser.name.toLowerCase().includes(query) ||
+        String(chatUser.email || '').toLowerCase().includes(query)
+      )
     })
   }, [searchTerm, users])
+
+  const availableDirectUsers = useMemo(
+    () => users.filter((item) => !isGroupChat(item) && item.userId !== user.userId),
+    [user.userId, users],
+  )
+
+  const availableGroupUsers = useMemo(() => {
+    if (!isGroupChat(activeUser)) return []
+    const memberIds = new Set(activeUser.memberIds || [])
+    return availableDirectUsers.filter((item) => !memberIds.has(item.userId))
+  }, [activeUser, availableDirectUsers])
+
+  const typingLabel = useMemo(() => {
+    if (!activeRoomId) return ''
+    const typingUserIds = typingByRoom[activeRoomId] || []
+    if (typingUserIds.length === 0) return ''
+
+    if (!isGroupChat(activeUser)) {
+      return `${activeUser?.name || 'User'} is typing...`
+    }
+
+    const memberNames = typingUserIds
+      .map((senderId) => activeUser?.members?.find((member) => member.userId === senderId)?.name)
+      .filter(Boolean)
+
+    if (memberNames.length === 1) return `${memberNames[0]} is typing...`
+    if (memberNames.length > 1) return `${memberNames.length} people are typing...`
+    return 'Someone is typing...'
+  }, [activeRoomId, activeUser, typingByRoom])
 
   const scrollToBottom = useCallback(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -182,31 +231,45 @@ function ChatDashboard() {
 
   const updateSidebarForMessage = useCallback(
     (payload) => {
-      const otherUserId = payload.senderId === user.userId ? payload.receiverId : payload.senderId
       const isIncoming = payload.senderId !== user.userId
-      const contentSummary = parseChatContent(payload.content).summary
+      const isNewMessageEvent = ['message', 'groupMessage', 'messageForwarded'].includes(payload.eventType || 'message')
 
       setUsers((prevUsers) =>
         sortUsers(
           prevUsers.map((chatUser) => {
-            if (chatUser.userId !== otherUserId) return chatUser
+            const matchesRoom = chatUser.chatRoomId && chatUser.chatRoomId === payload.chatRoomId
+            const matchesDirectUser =
+              !isGroupChat(chatUser) &&
+              (chatUser.userId === payload.senderId || chatUser.userId === payload.receiverId)
+
+            if (!matchesRoom && !matchesDirectUser) return chatUser
 
             const shouldIncreaseUnread =
+              isNewMessageEvent &&
               isIncoming &&
               !(activeUserIdRef.current === chatUser.userId && activeRoomIdRef.current === payload.chatRoomId)
+            const shouldClearUnread =
+              isNewMessageEvent &&
+              activeUserIdRef.current === chatUser.userId &&
+              activeRoomIdRef.current === payload.chatRoomId
 
             const parsedContent = parseStoredMessageContent(payload.content)
 
             return {
               ...chatUser,
               chatRoomId: payload.chatRoomId,
-<<<<<<< Updated upstream
-              lastMessagePreview: shortenPreview(parsedContent.text || (parsedContent.attachment?.name ? `Attachment: ${parsedContent.attachment.name}` : '')),
-=======
-              lastMessagePreview: shortenPreview(contentSummary),
->>>>>>> Stashed changes
+              lastMessagePreview: shortenPreview(
+                parsedContent.deletedForEveryone
+                  ? 'Message deleted'
+                  : parsedContent.text || (parsedContent.attachment?.name ? `Attachment: ${parsedContent.attachment.name}` : ''),
+              ),
               lastMessageAt: payload.timestamp,
-              unreadCount: shouldIncreaseUnread ? (chatUser.unreadCount || 0) + 1 : 0,
+              unreadCount: shouldIncreaseUnread
+                ? (chatUser.unreadCount || 0) + 1
+                : shouldClearUnread
+                  ? 0
+                  : chatUser.unreadCount || 0,
+              roomType: payload.roomType || chatUser.roomType,
             }
           }),
         ),
@@ -218,20 +281,9 @@ function ChatDashboard() {
   const handleIncomingMessage = useCallback(
     async (payload) => {
       if (!payload?.chatRoomId) return
+      const isNewMessageEvent = ['message', 'groupMessage', 'messageForwarded'].includes(payload.eventType || 'message')
 
-<<<<<<< Updated upstream
       const mappedMessage = toViewMessage(payload, user.userId)
-=======
-      const parsedContent = parseChatContent(payload.content)
-      const mappedMessageBase = {
-        ...payload,
-        isOwn: payload.senderId === user.userId,
-        timestamp: payload.timestamp || new Date().toISOString(),
-        displayText: parsedContent.summary,
-        attachment: parsedContent.attachment,
-        meta: parsedContent.meta,
-      }
->>>>>>> Stashed changes
 
       setMessagesByRoom((prev) => {
         const roomMessages = prev[payload.chatRoomId] || []
@@ -242,26 +294,15 @@ function ChatDashboard() {
         let nextMessages
         if (optimisticIndex >= 0) {
           nextMessages = [...roomMessages]
-<<<<<<< Updated upstream
-          nextMessages[optimisticIndex] = mappedMessage
+          nextMessages[optimisticIndex] = { ...roomMessages[optimisticIndex], ...mappedMessage, animateIn: false }
         } else {
           const existingIndex = roomMessages.findIndex((message) => message.id && message.id === payload.id)
           if (existingIndex >= 0) {
             nextMessages = [...roomMessages]
-            nextMessages[existingIndex] = {
-              ...roomMessages[existingIndex],
-              ...mappedMessage,
-            }
+            nextMessages[existingIndex] = { ...roomMessages[existingIndex], ...mappedMessage, animateIn: false }
           } else {
-            nextMessages = [...roomMessages, mappedMessage]
+            nextMessages = [...roomMessages, { ...mappedMessage, animateIn: isNewMessageEvent }]
           }
-=======
-          nextMessages[optimisticIndex] = { ...mappedMessageBase, animateIn: false }
-        } else if (roomMessages.some((message) => message.id && message.id === payload.id)) {
-          nextMessages = roomMessages
-        } else {
-          nextMessages = [...roomMessages, { ...mappedMessageBase, animateIn: true }]
->>>>>>> Stashed changes
         }
 
         return {
@@ -272,10 +313,10 @@ function ChatDashboard() {
 
       updateSidebarForMessage(payload)
 
-      if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId) {
+      if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId && isNewMessageEvent) {
         try {
           await markRoomAsRead(payload.chatRoomId)
-          if (payload.id) {
+          if (payload.id && !isGroupChat(activeUser)) {
             sendReadEventRef.current({
               messageId: payload.id,
               senderId: payload.senderId,
@@ -286,11 +327,11 @@ function ChatDashboard() {
         } catch {
           // ignore transient read-receipt failures
         }
-      } else if (payload.senderId !== user.userId && payload.id) {
+      } else if (payload.senderId !== user.userId && payload.id && isNewMessageEvent) {
         sendDeliveryEventRef.current({ messageId: payload.id })
       }
 
-      if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId && payload.id) {
+      if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId && payload.id && isNewMessageEvent) {
         const key = String(payload.id)
         setHighlightedMessageIds((current) => new Set([...current, key]))
         setTimeout(() => {
@@ -304,7 +345,7 @@ function ChatDashboard() {
 
       shouldAutoScrollRef.current = activeRoomIdRef.current === payload.chatRoomId
     },
-    [updateSidebarForMessage, user.userId],
+    [activeUser, updateSidebarForMessage, user.userId],
   )
 
   const sendDeliveryEventRef = useRef(() => false)
@@ -325,6 +366,8 @@ function ChatDashboard() {
             status: payload.status || message.status,
             deliveredAt: payload.deliveredAt ?? message.deliveredAt,
             readAt: payload.readAt ?? message.readAt,
+            seenBy: Array.isArray(payload.seenBy) ? payload.seenBy : message.seenBy,
+            reactions: Array.isArray(payload.reactions) ? payload.reactions : message.reactions,
           }
         })
         next[roomKey] = updated
@@ -334,20 +377,21 @@ function ChatDashboard() {
   }, [])
 
   const handleTypingEvent = useCallback((payload) => {
-    if (!payload?.senderId) return
+    if (!payload?.senderId || !payload?.chatRoomId) return
 
-    if (
-      payload.typing &&
-      payload.senderId === activeUserIdRef.current &&
-      payload.chatRoomId === activeRoomIdRef.current
-    ) {
-      setTypingUserId(payload.senderId)
-      return
-    }
+    setTypingByRoom((prev) => {
+      const current = new Set(prev[payload.chatRoomId] || [])
+      if (payload.typing) {
+        current.add(payload.senderId)
+      } else {
+        current.delete(payload.senderId)
+      }
 
-    if (!payload.typing) {
-      setTypingUserId((current) => (current === payload.senderId ? null : current))
-    }
+      return {
+        ...prev,
+        [payload.chatRoomId]: [...current],
+      }
+    })
   }, [])
 
   const handleReadReceipt = useCallback(
@@ -358,10 +402,21 @@ function ChatDashboard() {
         if (!roomMessages) return prev
 
         const updated = roomMessages.map((message) => {
-          if (message.senderId === user.userId) {
-            return { ...message, status: 'READ', readAt: payload.readAt }
+          const matchesReceipt =
+            Array.isArray(payload.messageIds) && payload.messageIds.length > 0
+              ? payload.messageIds.includes(message.id)
+              : message.senderId === user.userId
+
+          if (!matchesReceipt) {
+            return message
           }
-          return message
+
+          return {
+            ...message,
+            status: 'READ',
+            readAt: payload.readAt || message.readAt,
+            seenBy: mergeSeenBy(message.seenBy, payload.readerId),
+          }
         })
 
         return { ...prev, [payload.chatRoomId]: updated }
@@ -373,14 +428,35 @@ function ChatDashboard() {
   const handlePresenceEvent = useCallback((payload) => {
     if (!payload?.userId) return
     setUsers((prevUsers) =>
-      prevUsers.map((chatUser) =>
-        chatUser.userId === payload.userId ? { ...chatUser, online: payload.online } : chatUser,
-      ),
+      prevUsers.map((chatUser) => {
+        if (chatUser.userId === payload.userId) {
+          return { ...chatUser, online: payload.online }
+        }
+
+        if (isGroupChat(chatUser) && Array.isArray(chatUser.memberIds) && chatUser.memberIds.includes(payload.userId)) {
+          const updatedMembers = Array.isArray(chatUser.members)
+            ? chatUser.members.map((member) =>
+                member.userId === payload.userId ? { ...member, online: payload.online } : member,
+              )
+            : []
+          return {
+            ...chatUser,
+            members: updatedMembers,
+            online: updatedMembers.some((member) => member.userId !== user.userId && member.online),
+          }
+        }
+
+        return chatUser
+      }),
     )
-  }, [])
+  }, [user.userId])
 
   const handleCallEvent = useCallback((payload) => {
     callSignalHandlerRef.current?.(payload)
+  }, [])
+
+  const handleRoomEvent = useCallback(() => {
+    loadUsersRef.current(activeUserIdRef.current)
   }, [])
 
   const { isConnected, sendMessage, sendTypingEvent, sendDeliveryEvent, sendReadEvent, sendCallSignal } = useChatSocket({
@@ -390,6 +466,7 @@ function ChatDashboard() {
     onCall: handleCallEvent,
     onTyping: handleTypingEvent,
     onReadReceipt: handleReadReceipt,
+    onRoomEvent: handleRoomEvent,
     onPresence: handlePresenceEvent,
     onAuthError: () => logout({ notify: true }),
   })
@@ -410,7 +487,7 @@ function ChatDashboard() {
     if (!activeUser || !activeRoomId) return
     sendTypingEvent({
       chatRoomId: activeRoomId,
-      receiverId: activeUser.userId,
+      receiverId: isGroupChat(activeUser) ? null : activeUser.userId,
       typing: false,
     })
   }, 450)
@@ -418,22 +495,7 @@ function ChatDashboard() {
   const loadRoomHistory = useCallback(
     async (chatRoomId, page, replace = false) => {
       const pageData = await fetchRoomMessages(chatRoomId, page, PAGE_SIZE)
-<<<<<<< Updated upstream
-      const mappedMessages = pageData.messages.map((message) => toViewMessage(message, user.userId))
-=======
-      const mappedMessages = pageData.messages.map((message) => {
-        const parsedContent = parseChatContent(message.content)
-
-        return {
-          ...message,
-          isOwn: message.senderId === user.userId,
-          displayText: parsedContent.summary,
-          attachment: parsedContent.attachment,
-          meta: parsedContent.meta,
-          animateIn: false,
-        }
-      })
->>>>>>> Stashed changes
+      const mappedMessages = pageData.messages.map((message) => ({ ...toViewMessage(message, user.userId), animateIn: false }))
 
       setMessagesByRoom((prev) => {
         const existing = prev[chatRoomId] || []
@@ -469,21 +531,26 @@ function ChatDashboard() {
       openingConversationRef.current.add(chatUser.userId)
 
       try {
-        setTypingUserId(null)
+        setTypingByRoom((prev) => ({ ...prev, [activeRoomIdRef.current]: [] }))
         setActiveUserId(chatUser.userId)
         if (switchToChatView) {
           setMobileView('chat')
         }
 
-        const room = await getOrCreateRoom(chatUser.userId)
-        setUsers((prevUsers) =>
-          prevUsers.map((item) =>
-            item.userId === chatUser.userId ? { ...item, chatRoomId: room.chatRoomId, unreadCount: 0 } : item,
-          ),
-        )
+        let roomId = chatUser.chatRoomId
+        if (!isGroupChat(chatUser)) {
+          const room = await getOrCreateRoom(chatUser.userId)
+          roomId = room.chatRoomId
+          setUsers((prevUsers) =>
+            prevUsers.map((item) =>
+              item.userId === chatUser.userId ? { ...item, chatRoomId: room.chatRoomId, unreadCount: 0 } : item,
+            ),
+          )
+        }
 
-        await loadRoomHistory(room.chatRoomId, 0, true)
-        await markRoomAsRead(room.chatRoomId)
+        if (!roomId) return
+        await loadRoomHistory(roomId, 0, true)
+        await markRoomAsRead(roomId)
       } catch (error) {
         toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to open conversation')
       } finally {
@@ -493,7 +560,7 @@ function ChatDashboard() {
     [loadRoomHistory],
   )
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (preferredActiveUserId = null) => {
     try {
       setLoadingUsers(true)
       const [usersResult, profileResult] = await Promise.allSettled([fetchSidebarUsers(), fetchMyProfile()])
@@ -504,7 +571,13 @@ function ChatDashboard() {
         setCurrentUserProfile(profileResult.value)
       }
       if (sortedUsers.length > 0) {
-        setActiveUserId((current) => current ?? sortedUsers[0].userId)
+        setActiveUserId((current) => {
+          const preferred = preferredActiveUserId ?? current
+          if (preferred && sortedUsers.some((item) => item.userId === preferred)) {
+            return preferred
+          }
+          return sortedUsers[0].userId
+        })
       }
     } catch (error) {
       toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to load users')
@@ -512,6 +585,10 @@ function ChatDashboard() {
       setLoadingUsers(false)
     }
   }, [])
+
+  useEffect(() => {
+    loadUsersRef.current = loadUsers
+  }, [loadUsers])
 
   useEffect(() => {
     loadUsers()
@@ -559,6 +636,7 @@ function ChatDashboard() {
 
   useEffect(() => {
     if (!activeUser || !activeRoomId || !user?.userId) return
+    if (isGroupChat(activeUser)) return
     const roomMessages = activeMessagesRef.current
     roomMessages.forEach((message) => {
       if (message.senderId === user.userId) return
@@ -592,7 +670,7 @@ function ChatDashboard() {
 
     sendTypingEvent({
       chatRoomId: activeRoomId,
-      receiverId: activeUser.userId,
+      receiverId: isGroupChat(activeUser) ? null : activeUser.userId,
       typing: true,
     })
     sendStopTyping()
@@ -675,7 +753,7 @@ function ChatDashboard() {
     const clientMessageId = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const published = sendMessage({
       chatRoomId: activeRoomId,
-      receiverId: activeUser.userId,
+      receiverId: isGroupChat(activeUser) ? null : activeUser.userId,
       content: storedContent,
       clientMessageId,
     })
@@ -689,16 +767,15 @@ function ChatDashboard() {
       id: null,
       clientMessageId,
       chatRoomId: activeRoomId,
+      roomType: activeUser.roomType,
       senderId: user.userId,
-      receiverId: activeUser.userId,
+      receiverId: isGroupChat(activeUser) ? null : activeUser.userId,
       content: storedContent,
       status: 'SENT',
       timestamp: new Date().toISOString(),
-<<<<<<< Updated upstream
-=======
-      isOwn: true,
       animateIn: true,
->>>>>>> Stashed changes
+      seenBy: [],
+      reactions: [],
     }
     const mappedOptimistic = toViewMessage(optimisticMessage, user.userId)
 
@@ -733,7 +810,7 @@ function ChatDashboard() {
 
     sendTypingEvent({
       chatRoomId: activeRoomId,
-      receiverId: activeUser.userId,
+      receiverId: isGroupChat(activeUser) ? null : activeUser.userId,
       typing: false,
     })
   }
@@ -744,7 +821,7 @@ function ChatDashboard() {
     setForwardTarget(null)
     setReplyTarget({
       id: message.id || message.clientMessageId,
-      senderName: message.isOwn ? 'You' : activeUser?.name || 'User',
+      senderName: resolveReplySenderName(activeUser, users, user.userId, message),
       text: message.displayContent || message.attachment?.name || 'Attachment',
     })
   }
@@ -798,6 +875,24 @@ function ChatDashboard() {
       }))
     } catch (error) {
       toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to delete message')
+    }
+  }
+
+  const handleReactToMessage = async (message, emoji) => {
+    if (!message?.id) return
+    try {
+      await addMessageReaction(message.id, emoji)
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to add reaction')
+    }
+  }
+
+  const handleRemoveReaction = async (message, emoji) => {
+    if (!message?.id) return
+    try {
+      await removeMessageReaction(message.id, emoji)
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to remove reaction')
     }
   }
 
@@ -909,6 +1004,47 @@ function ChatDashboard() {
     }
   }
 
+  const handleCreateGroup = async ({ name, memberIds }) => {
+    try {
+      const room = await createGroup({ name, memberIds })
+      const groupKey = -room.chatRoomId
+      await loadUsers(groupKey)
+      setActiveUserId(groupKey)
+      setMobileView('chat')
+      await loadRoomHistory(room.chatRoomId, 0, true)
+      await markRoomAsRead(room.chatRoomId)
+      toast.success('Group created')
+      return true
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to create group')
+      return false
+    }
+  }
+
+  const handleAddGroupMembers = async (memberIds) => {
+    if (!activeRoomId || memberIds.length === 0) return
+    try {
+      await addGroupMembers(activeRoomId, memberIds)
+      await loadUsers(activeUserIdRef.current)
+      toast.success('Members added')
+      return true
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to add members')
+      return false
+    }
+  }
+
+  const handleRemoveGroupMember = async (memberId) => {
+    if (!activeRoomId || !memberId) return
+    try {
+      await removeGroupMember(activeRoomId, memberId)
+      await loadUsers(activeUserIdRef.current)
+      toast.success('Member removed')
+    } catch (error) {
+      toast.error(error?.userMessage || error?.response?.data?.message || 'Failed to remove member')
+    }
+  }
+
   const loadOlderMessages = async () => {
     if (!activeRoomId) return
     const roomHistory = historyByRoom[activeRoomId]
@@ -939,42 +1075,36 @@ function ChatDashboard() {
       sendCallSignal={sendCallSignal}
       registerSignalHandler={registerCallSignalHandler}
     >
-<<<<<<< Updated upstream
-      <main className="mx-auto min-h-screen max-w-7xl px-2 py-2 sm:px-4 sm:py-4 lg:px-6 lg:py-6">
-        <section className="grid h-[calc(100dvh-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] sm:h-[calc(100dvh-2rem)] sm:rounded-3xl md:grid-cols-[280px_1fr] md:h-[calc(100dvh-2.5rem)] md:rounded-[28px] lg:grid-cols-[340px_1fr] lg:h-[calc(100dvh-3rem)]">
-=======
       <main className="mx-auto min-h-screen supports-[height:100dvh]:min-h-[100dvh] max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
         <section className="grid min-h-0 h-[calc(100vh-2rem)] sm:h-[calc(100vh-3rem)] supports-[height:100dvh]:h-[calc(100dvh-2rem)] sm:supports-[height:100dvh]:h-[calc(100dvh-3rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] md:grid-cols-[320px_1fr] md:rounded-[28px] dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_14px_30px_rgba(0,0,0,0.55)]">
->>>>>>> Stashed changes
           <UserSidebar
             className={mobileView === 'chat' ? 'hidden md:flex' : 'flex'}
             users={filteredUsers}
             activeUserId={activeUserId}
             onSelectUser={openConversation}
+            onCreateGroup={handleCreateGroup}
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
             connected={isConnected}
             currentUserName={currentUserProfile?.name || user?.name || user?.email || 'User'}
             currentUserEmail={currentUserProfile?.email || user?.email || ''}
             currentUserProfileImage={currentUserProfile?.profileImageUrl}
+            availableUsers={availableDirectUsers}
             onProfileUpdated={(profile) => setCurrentUserProfile(profile)}
             onLogout={() => logout()}
           />
           <ChatWindow
-<<<<<<< Updated upstream
             className={mobileView === 'list' ? 'hidden min-h-0 md:grid' : 'grid min-h-0'}
-=======
-            className={mobileView === 'list' ? 'hidden md:flex' : 'flex'}
->>>>>>> Stashed changes
             activeUser={activeUser}
             messages={filteredChatMessages}
             draft={draft}
             isConnected={isConnected}
+            currentUserId={user.userId}
             onDraftChange={handleDraftChange}
             onSend={handleSendMessage}
             onLoadOlder={loadOlderMessages}
             hasMoreHistory={Boolean(activeRoomId && historyByRoom[activeRoomId] && !historyByRoom[activeRoomId].last)}
-            typing={typingUserId === activeUserId}
+            typingLabel={typingLabel}
             messageEndRef={messageEndRef}
             onBack={() => setMobileView('list')}
             searchTerm={chatSearchTerm}
@@ -986,7 +1116,8 @@ function ChatDashboard() {
             forwardTarget={forwardTarget}
             editingMessage={editingMessage}
             attachmentDraft={attachmentDraft}
-            allUsers={users.filter((item) => item.userId !== user.userId)}
+            allUsers={availableDirectUsers}
+            availableGroupUsers={availableGroupUsers}
             onClearReply={() => setReplyTarget(null)}
             onClearForward={() => setForwardTarget(null)}
             onCancelEdit={handleCancelEdit}
@@ -996,9 +1127,13 @@ function ChatDashboard() {
             onReplyMessage={handleReplyMessage}
             onForwardMessage={handleForwardMessage}
             onEditMessage={handleEditMessage}
+            onReactToMessage={handleReactToMessage}
+            onRemoveReaction={handleRemoveReaction}
             onDeleteForMe={handleDeleteForMe}
             onDeleteForEveryone={handleDeleteForEveryone}
             onForwardToUsers={handleForwardToUsers}
+            onAddGroupMembers={handleAddGroupMembers}
+            onRemoveGroupMember={handleRemoveGroupMember}
           />
         </section>
       </main>

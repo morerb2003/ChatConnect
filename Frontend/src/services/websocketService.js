@@ -9,6 +9,7 @@ export const USER_STATUS_DESTINATION = '/user/queue/status'
 export const USER_CALL_DESTINATION = '/user/queue/call'
 export const USER_TYPING_DESTINATION = '/user/queue/typing'
 export const USER_READ_RECEIPTS_DESTINATION = '/user/queue/read-receipts'
+export const USER_ROOMS_DESTINATION = '/user/queue/rooms'
 export const TOPIC_PRESENCE_DESTINATION = '/topic/presence'
 
 const parseNestedJson = (value) => {
@@ -111,6 +112,7 @@ export const attachSubscriptions = (client, handlers) => {
   subscribe(USER_CALL_DESTINATION, handlers.onCall)
   subscribe(USER_TYPING_DESTINATION, handlers.onTyping)
   subscribe(USER_READ_RECEIPTS_DESTINATION, handlers.onReadReceipt)
+  subscribe(USER_ROOMS_DESTINATION, handlers.onRoomEvent)
   subscribe(TOPIC_PRESENCE_DESTINATION, handlers.onPresence)
 
   return () => {

@@ -8,7 +8,17 @@ import {
   shouldTreatAsFatalConnectionError,
 } from '../services/websocketService'
 
-function useChatSocket({ token, onMessage, onStatus, onCall, onTyping, onReadReceipt, onPresence, onAuthError }) {
+function useChatSocket({
+  token,
+  onMessage,
+  onStatus,
+  onCall,
+  onTyping,
+  onReadReceipt,
+  onRoomEvent,
+  onPresence,
+  onAuthError,
+}) {
   const clientRef = useRef(null)
   const unsubscribeRef = useRef(null)
   const reconnectTimerRef = useRef(null)
@@ -23,6 +33,7 @@ function useChatSocket({ token, onMessage, onStatus, onCall, onTyping, onReadRec
     onCall,
     onTyping,
     onReadReceipt,
+    onRoomEvent,
     onPresence,
     onAuthError,
   })
@@ -36,10 +47,11 @@ function useChatSocket({ token, onMessage, onStatus, onCall, onTyping, onReadRec
       onCall,
       onTyping,
       onReadReceipt,
+      onRoomEvent,
       onPresence,
       onAuthError,
     }
-  }, [onAuthError, onCall, onMessage, onPresence, onReadReceipt, onStatus, onTyping])
+  }, [onAuthError, onCall, onMessage, onPresence, onReadReceipt, onRoomEvent, onStatus, onTyping])
 
   const clearReconnectTimer = useCallback(() => {
     if (reconnectTimerRef.current) {

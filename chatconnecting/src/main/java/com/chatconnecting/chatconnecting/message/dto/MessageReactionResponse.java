@@ -1,7 +1,5 @@
 package com.chatconnecting.chatconnecting.message.dto;
 
-import java.time.LocalDateTime;
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,9 +11,7 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReadReceiptEvent {
-    private Long chatRoomId;
-    private Long readerId;
-    private LocalDateTime readAt;
-    private List<Long> messageIds;
+public class MessageReactionResponse {
+    private Long userId;
+    private String emoji;
 }

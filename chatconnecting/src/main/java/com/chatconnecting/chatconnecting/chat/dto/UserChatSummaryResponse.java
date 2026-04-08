@@ -1,6 +1,8 @@
 package com.chatconnecting.chatconnecting.chat.dto;
 
+import com.chatconnecting.chatconnecting.chat.ChatRoomType;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,4 +24,11 @@ public class UserChatSummaryResponse {
     private String lastMessagePreview;
     private LocalDateTime lastMessageAt;
     private Long chatRoomId;
+    private ChatRoomType roomType;
+    private Long adminId;
+    private Long memberCount;
+    private List<Long> memberIds;
+    private List<String> memberNames;
+    private List<ChatRoomMemberResponse> members;
+    private boolean canManageMembers;
 }
