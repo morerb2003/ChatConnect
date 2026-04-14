@@ -11,6 +11,8 @@ export const USER_TYPING_DESTINATION = '/user/queue/typing'
 export const USER_READ_RECEIPTS_DESTINATION = '/user/queue/read-receipts'
 export const USER_ROOMS_DESTINATION = '/user/queue/rooms'
 export const TOPIC_PRESENCE_DESTINATION = '/topic/presence'
+const GROUP_TOPIC_PREFIX = '/topic/group/'
+const GROUP_CALL_TOPIC_PREFIX = '/topic/group-call/'
 
 const parseNestedJson = (value) => {
   if (typeof value !== 'string') return value
@@ -62,6 +64,9 @@ export const getReconnectDelayMs = (attempt) => {
   return Math.min(BASE_RECONNECT_DELAY_MS * 2 ** (cappedAttempt - 1), MAX_RECONNECT_DELAY_MS)
 }
 
+export const buildGroupTopicDestination = (chatRoomId) => `${GROUP_TOPIC_PREFIX}${chatRoomId}`
+export const buildGroupCallTopicDestination = (chatRoomId) => `${GROUP_CALL_TOPIC_PREFIX}${chatRoomId}`
+
 export const createChatSocketClient = ({
   token,
   onConnect,
@@ -96,15 +101,16 @@ export const createChatSocketClient = ({
   })
 }
 
+export const subscribeWithPayload = (client, destination, callback) =>
+  client.subscribe(destination, (frame) => {
+    const data = parsePayload(frame)
+    if (data) callback?.(data)
+  })
+
 export const attachSubscriptions = (client, handlers) => {
   const subscriptions = []
   const subscribe = (destination, callback) => {
-    subscriptions.push(
-      client.subscribe(destination, (frame) => {
-        const data = parsePayload(frame)
-        if (data) callback?.(data)
-      }),
-    )
+    subscriptions.push(subscribeWithPayload(client, destination, callback))
   }
 
   subscribe(USER_MESSAGES_DESTINATION, handlers.onMessage)

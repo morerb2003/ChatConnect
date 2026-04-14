@@ -64,6 +64,7 @@ public class MessageService {
     private static final String STATUS_DESTINATION = "/queue/status";
     private static final String TYPING_DESTINATION = "/queue/typing";
     private static final String READ_RECEIPTS_DESTINATION = "/queue/read-receipts";
+    private static final String GROUP_TOPIC_DESTINATION_PREFIX = "/topic/group/";
     private static final long MAX_ATTACHMENT_SIZE_BYTES = 20L * 1024L * 1024L;
     private static final long EDIT_WINDOW_MINUTES = 15L;
     private static final long DELETE_FOR_EVERYONE_WINDOW_MINUTES = 60L;
@@ -132,6 +133,23 @@ public class MessageService {
     public ChatMessageResponse sendMessage(String senderPrincipalName, ChatMessageRequest request) {
         User sender = chatService.getUserByEmail(senderPrincipalName);
         ChatRoom room = resolveRoom(sender, request);
+        if (room.isGroupRoom()) {
+            if (request.getChatRoomId() == null) {
+                throw new BadRequestException("chatRoomId is required for group messages");
+            }
+            if (!room.hasParticipant(sender.getId())) {
+                throw new ForbiddenOperationException("You are not a member of this group");
+            }
+            if (request.getReceiverId() != null) {
+                log.debug(
+                        "Ignoring receiverId for group message: senderId={}, roomId={}, receiverId={}",
+                        sender.getId(),
+                        room.getId(),
+                        request.getReceiverId()
+                );
+            }
+        }
+
         String content = request.getContent() == null ? "" : request.getContent().trim();
         if (content.isEmpty()) {
             throw new BadRequestException("Message content cannot be empty");
@@ -156,13 +174,18 @@ public class MessageService {
         Message saved = messageRepository.saveAndFlush(message);
         ChatMessageResponse payload = toResponse(saved, request.getClientMessageId());
         payload.setEventType(room.isGroupRoom() ? "groupMessage" : "message");
-        log.debug("Persisted message id={} room={} sender={} receiver={}",
+        log.debug("Message sent: id={}, chatRoomId={}, roomType={}, senderId={}, receiverId={}",
                 payload.getId(),
                 payload.getChatRoomId(),
+                payload.getRoomType(),
                 payload.getSenderId(),
                 payload.getReceiverId());
 
-        broadcastToRoom(room, MESSAGE_DESTINATION, payload);
+        if (room.isGroupRoom()) {
+            broadcastGroupMessage(room, sender, payload);
+        } else {
+            broadcastToRoom(room, MESSAGE_DESTINATION, payload);
+        }
         return payload;
     }
 
@@ -613,6 +636,19 @@ public class MessageService {
                 .messageIds(messageIds)
                 .build();
         broadcastToRoom(room, READ_RECEIPTS_DESTINATION, event);
+    }
+
+    private void broadcastGroupMessage(ChatRoom room, User sender, ChatMessageResponse payload) {
+        String topicDestination = GROUP_TOPIC_DESTINATION_PREFIX + room.getId();
+        log.debug("Sending group message to: {}", room.getId());
+        messagingTemplate.convertAndSend(topicDestination, payload);
+        log.debug(
+                "Broadcasted group message: chatRoomId={}, senderId={}, topic={}, members={}",
+                room.getId(),
+                sender.getId(),
+                topicDestination,
+                room.getParticipants().stream().map(User::getId).toList()
+        );
     }
 
     private void broadcastToRoom(ChatRoom room, String destination, Object payload) {

@@ -86,6 +86,12 @@ public class ChatService {
         User currentUser = getUserByEmail(currentEmail);
         String groupName = normalizeGroupName(request.getName());
         Set<User> members = resolveGroupMembers(currentUser, request.getMemberIds());
+        log.info(
+                "Creating group: creatorId={}, name={}, memberIds={}",
+                currentUser.getId(),
+                groupName,
+                members.stream().map(User::getId).toList()
+        );
 
         ChatRoom room = ChatRoom.builder()
                 .roomType(ChatRoomType.GROUP)
@@ -95,6 +101,12 @@ public class ChatService {
                 .build();
 
         ChatRoom saved = chatRoomRepository.saveAndFlush(room);
+        log.info(
+                "Group created: roomId={}, adminId={}, members={}",
+                saved.getId(),
+                currentUser.getId(),
+                saved.getParticipants().stream().map(User::getId).toList()
+        );
         notifyRoomParticipants("groupCreated", saved, saved.getParticipants(), null);
         return toRoomResponse(saved, currentUser);
     }

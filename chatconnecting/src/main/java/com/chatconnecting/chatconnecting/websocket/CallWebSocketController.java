@@ -4,6 +4,7 @@ import com.chatconnecting.chatconnecting.common.dto.MessageResponse;
 import com.chatconnecting.chatconnecting.exception.BadRequestException;
 import com.chatconnecting.chatconnecting.exception.ForbiddenOperationException;
 import com.chatconnecting.chatconnecting.websocket.dto.CallSignalMessage;
+import com.chatconnecting.chatconnecting.websocket.dto.GroupCallSignalMessage;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import lombok.RequiredArgsConstructor;
@@ -25,30 +26,69 @@ public class CallWebSocketController {
 
     @MessageMapping("/call.offer")
     public void offer(@Valid @Payload CallSignalMessage message, Principal principal) {
-        relay(message, principal);
+        relayDirect(message, principal);
     }
 
     @MessageMapping("/call.answer")
     public void answer(@Valid @Payload CallSignalMessage message, Principal principal) {
-        relay(message, principal);
+        relayDirect(message, principal);
     }
 
     @MessageMapping("/call.ice")
     public void ice(@Valid @Payload CallSignalMessage message, Principal principal) {
-        relay(message, principal);
+        relayDirect(message, principal);
     }
 
     @MessageMapping("/call.end")
     public void end(@Valid @Payload CallSignalMessage message, Principal principal) {
-        relay(message, principal);
+        relayDirect(message, principal);
     }
 
-    private void relay(CallSignalMessage message, Principal principal) {
+    @MessageMapping("/group-call.start")
+    public void groupStart(@Valid @Payload GroupCallSignalMessage message, Principal principal) {
+        relayGroup(message, principal);
+    }
+
+    @MessageMapping("/group-call.join")
+    public void groupJoin(@Valid @Payload GroupCallSignalMessage message, Principal principal) {
+        relayGroup(message, principal);
+    }
+
+    @MessageMapping("/group-call.offer")
+    public void groupOffer(@Valid @Payload GroupCallSignalMessage message, Principal principal) {
+        relayGroup(message, principal);
+    }
+
+    @MessageMapping("/group-call.answer")
+    public void groupAnswer(@Valid @Payload GroupCallSignalMessage message, Principal principal) {
+        relayGroup(message, principal);
+    }
+
+    @MessageMapping("/group-call.ice-candidate")
+    public void groupIceCandidate(@Valid @Payload GroupCallSignalMessage message, Principal principal) {
+        relayGroup(message, principal);
+    }
+
+    @MessageMapping("/group-call.end")
+    public void groupEnd(@Valid @Payload GroupCallSignalMessage message, Principal principal) {
+        relayGroup(message, principal);
+    }
+
+    private void relayDirect(CallSignalMessage message, Principal principal) {
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
             throw new ForbiddenOperationException("Unauthorized websocket request");
         }
         log.debug("Call signal type={} from={} to={}", message.getType(), principal.getName(), message.getTo());
-        callSignalingService.relaySignal(principal.getName(), message);
+        callSignalingService.relayDirectSignal(principal.getName(), message);
+    }
+
+    private void relayGroup(GroupCallSignalMessage message, Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
+            throw new ForbiddenOperationException("Unauthorized websocket request");
+        }
+        log.debug("Group call signal type={} from={} roomId={} to={}",
+                message.getType(), principal.getName(), message.getChatRoomId(), message.getTo());
+        callSignalingService.relayGroupSignal(principal.getName(), message);
     }
 
     @MessageExceptionHandler({ForbiddenOperationException.class, BadRequestException.class, IllegalArgumentException.class})

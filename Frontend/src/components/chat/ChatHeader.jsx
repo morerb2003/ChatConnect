@@ -15,7 +15,7 @@ function ChatHeader({
   const [selectedMemberIds, setSelectedMemberIds] = useState([])
   const inCall = callState !== 'idle'
   const isGroup = activeUser?.roomType === 'GROUP'
-  const disableCalls = inCall || !activeUser?.online || isGroup
+  const disableCalls = inCall || !activeUser || (!isGroup && !activeUser.online)
   const memberNames = Array.isArray(activeUser?.memberNames) ? activeUser.memberNames : []
 
   return (
@@ -74,7 +74,7 @@ function ChatHeader({
           type="button"
           onClick={startAudioCall}
           disabled={disableCalls}
-          title={isGroup ? 'Calls are available only in direct chats' : activeUser.online ? 'Start audio call' : 'User is offline'}
+          title={isGroup ? 'Start group audio call' : activeUser.online ? 'Start audio call' : 'User is offline'}
           aria-label="Start audio call"
           className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
         >
@@ -84,7 +84,7 @@ function ChatHeader({
           type="button"
           onClick={startVideoCall}
           disabled={disableCalls}
-          title={isGroup ? 'Calls are available only in direct chats' : activeUser.online ? 'Start video call' : 'User is offline'}
+          title={isGroup ? 'Start group video call' : activeUser.online ? 'Start video call' : 'User is offline'}
           aria-label="Start video call"
           className="rounded-full border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
         >

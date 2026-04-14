@@ -8,13 +8,52 @@ const formatDuration = (seconds) => {
   return `${mm}:${ss}`
 }
 
+function StreamTile({ label, stream, callMode, muted = false }) {
+  const videoRef = useRef(null)
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream || null
+    }
+  }, [stream])
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/90">
+      <div className="aspect-video">
+        {callMode === 'video' ? (
+          stream ? (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted={muted}
+              className="h-full w-full rounded-xl object-cover"
+            />
+          ) : (
+            <div className="grid h-full place-items-center px-3 text-center text-sm text-slate-300">Waiting for video...</div>
+          )
+        ) : (
+          <div className="grid h-full place-items-center px-3 text-center">
+            <Avatar name={label} size="xl" />
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-slate-700/70 px-3 py-2 text-xs text-slate-200">
+        <span className="truncate font-semibold">{label}</span>
+        <span className="text-slate-400">{callMode === 'video' ? 'Video' : 'Audio'}</span>
+      </div>
+    </div>
+  )
+}
+
 function CallModal({ activeUser }) {
   const {
     callState,
     callMode,
     incomingCall,
     localStream,
-    remoteStream,
+    remoteParticipants,
+    sessionInfo,
     isMuted,
     elapsedSeconds,
     acceptIncomingCall,
@@ -23,38 +62,50 @@ function CallModal({ activeUser }) {
     endCall,
   } = useCall()
 
-  const localVideoRef = useRef(null)
-  const remoteVideoRef = useRef(null)
   const showIncoming = callState === 'incoming' && incomingCall
   const showCallWindow = ['connecting', 'outgoing', 'active'].includes(callState)
-
-  useEffect(() => {
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream || null
-    }
-  }, [localStream])
-
-  useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream || null
-    }
-  }, [remoteStream])
+  const isGroupCall = (sessionInfo?.type || incomingCall?.type) === 'GROUP'
 
   const statusLabel = useMemo(() => {
-    if (callState === 'outgoing') return 'Ringing...'
+    if (callState === 'outgoing') return isGroupCall ? 'Waiting for participants...' : 'Ringing...'
     if (callState === 'connecting') return 'Connecting...'
     if (callState === 'active') return formatDuration(elapsedSeconds)
     return ''
-  }, [callState, elapsedSeconds])
+  }, [callState, elapsedSeconds, isGroupCall])
+
+  const title = useMemo(() => {
+    if (sessionInfo?.type === 'GROUP') {
+      return sessionInfo.roomName || activeUser?.name || `Group ${sessionInfo.chatRoomId}`
+    }
+    if (sessionInfo?.type === 'DIRECT') {
+      return sessionInfo.targetName || activeUser?.name || sessionInfo.targetEmail || 'Call'
+    }
+    if (incomingCall?.type === 'GROUP') {
+      return incomingCall.roomName || activeUser?.name || `Group ${incomingCall.chatRoomId}`
+    }
+    return activeUser?.name || incomingCall?.fromName || incomingCall?.from || 'Call'
+  }, [activeUser?.name, incomingCall, sessionInfo])
+
+  const incomingSubtitle = useMemo(() => {
+    if (!incomingCall) return ''
+    if (incomingCall.type === 'GROUP') {
+      const caller = incomingCall.fromName || incomingCall.from || 'Group member'
+      return `${caller} invited you`
+    }
+    return incomingCall.fromName || incomingCall.from || 'Incoming call'
+  }, [incomingCall])
+
+  const participantCount = remoteParticipants.length + (localStream ? 1 : 0)
 
   return (
     <>
       {showIncoming ? (
         <div className="fixed left-4 right-4 top-4 z-50 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl md:left-auto md:right-4 md:w-full md:max-w-sm dark:border-slate-800 dark:bg-slate-950">
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-            Incoming {incomingCall.data?.callMode || 'audio'} call
+            Incoming {incomingCall.callMode || 'audio'} {incomingCall.type === 'GROUP' ? 'group ' : ''}call
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{incomingCall.from}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{title}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{incomingSubtitle}</p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -76,14 +127,14 @@ function CallModal({ activeUser }) {
 
       {showCallWindow ? (
         <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/60 px-4 py-6">
-          <div className="relative w-full max-w-4xl max-h-[calc(100vh-3rem)] supports-[height:100dvh]:max-h-[calc(100dvh-3rem)] overflow-hidden overflow-y-auto rounded-2xl bg-slate-900 p-3 shadow-2xl">
+          <div className="relative w-full max-w-6xl max-h-[calc(100vh-3rem)] supports-[height:100dvh]:max-h-[calc(100dvh-3rem)] overflow-hidden overflow-y-auto rounded-2xl bg-slate-900 p-3 shadow-2xl">
             <div className="mb-2 flex items-center justify-between px-2 text-white">
-              <div className="flex items-center gap-2">
-                <Avatar name={activeUser?.name || incomingCall?.from} imageUrl={activeUser?.profileImageUrl} size="sm" />
-                <div>
-                  <p className="text-sm font-semibold">{activeUser?.name || incomingCall?.from}</p>
-                  <p className="text-xs text-slate-300">{statusLabel}</p>
-                </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{title}</p>
+                <p className="text-xs text-slate-300">
+                  {statusLabel}
+                  {isGroupCall ? ` • ${Math.max(participantCount, 1)} participants` : ''}
+                </p>
               </div>
               <button
                 type="button"
@@ -94,29 +145,21 @@ function CallModal({ activeUser }) {
               </button>
             </div>
 
-            <div className="grid gap-2 min-[520px]:grid-cols-2">
-              <div className="aspect-video rounded-xl bg-slate-800">
-                {callMode === 'video' ? (
-                  <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full rounded-xl object-cover" />
-                ) : (
-                  <div className="grid h-full place-items-center text-sm text-slate-200">Audio call connected</div>
-                )}
-              </div>
-              <div className="aspect-video rounded-xl bg-slate-800">
-                {callMode === 'video' ? (
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="h-full w-full rounded-xl object-cover"
-                  />
-                ) : (
-                  <div className="grid h-full place-items-center text-sm text-slate-200">
-                    Microphone {isMuted ? 'muted' : 'active'}
-                  </div>
-                )}
-              </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {remoteParticipants.map((participant) => (
+                <StreamTile
+                  key={participant.email}
+                  label={participant.name || participant.email}
+                  stream={participant.stream}
+                  callMode={callMode}
+                />
+              ))}
+              <StreamTile
+                label="You"
+                stream={localStream}
+                callMode={callMode}
+                muted
+              />
             </div>
 
             <div className="mt-3 flex justify-center gap-3">

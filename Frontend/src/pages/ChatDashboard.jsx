@@ -39,7 +39,12 @@ const sortUsers = (users) =>
     return new Date(right.lastMessageAt).getTime() - new Date(left.lastMessageAt).getTime()
   })
 
-const isGroupChat = (chatUser) => chatUser?.roomType === 'GROUP'
+const isGroupChat = (chatUser) => (chatUser?.roomType || chatUser?.type) === 'GROUP'
+const isGroupPayload = (payload) => (payload?.roomType || payload?.type) === 'GROUP' || payload?.eventType === 'groupMessage'
+const normalizeChatDescriptor = (chatUser) => {
+  const type = chatUser?.roomType || chatUser?.type || null
+  return { ...chatUser, roomType: type, type }
+}
 
 const resolveReplySenderName = (activeUser, allUsers, currentUserId, message) => {
   if (message?.senderId === currentUserId) return 'You'
@@ -126,6 +131,7 @@ function ChatDashboard() {
   const readAckedMessageIdsRef = useRef(new Set())
   const activeMessagesRef = useRef([])
   const callSignalHandlerRef = useRef(() => {})
+  const groupCallSignalHandlerRef = useRef(() => {})
   const loadUsersRef = useRef(async () => {})
   const previewUrlRef = useRef(null)
 
@@ -146,6 +152,17 @@ function ChatDashboard() {
 
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId
+  }, [activeRoomId])
+
+  useEffect(() => {
+    if (!activeRoomId) return
+    setUsers((prevUsers) =>
+      prevUsers.map((chatUser) =>
+        chatUser.chatRoomId === activeRoomId && (chatUser.unreadCount || 0) > 0
+          ? { ...chatUser, unreadCount: 0 }
+          : chatUser,
+      ),
+    )
   }, [activeRoomId])
 
   const activeMessages = useMemo(() => {
@@ -200,6 +217,10 @@ function ChatDashboard() {
     () => users.filter((item) => !isGroupChat(item) && item.userId !== user.userId),
     [user.userId, users],
   )
+  const groupRoomIds = useMemo(
+    () => users.filter((item) => isGroupChat(item) && item.chatRoomId).map((item) => item.chatRoomId),
+    [users],
+  )
 
   const availableGroupUsers = useMemo(() => {
     if (!isGroupChat(activeUser)) return []
@@ -233,25 +254,27 @@ function ChatDashboard() {
     (payload) => {
       const isIncoming = payload.senderId !== user.userId
       const isNewMessageEvent = ['message', 'groupMessage', 'messageForwarded'].includes(payload.eventType || 'message')
+      const payloadIsGroup = isGroupPayload(payload)
 
       setUsers((prevUsers) =>
         sortUsers(
           prevUsers.map((chatUser) => {
             const matchesRoom = chatUser.chatRoomId && chatUser.chatRoomId === payload.chatRoomId
             const matchesDirectUser =
+              !payloadIsGroup &&
               !isGroupChat(chatUser) &&
               (chatUser.userId === payload.senderId || chatUser.userId === payload.receiverId)
 
             if (!matchesRoom && !matchesDirectUser) return chatUser
 
+            const isActiveRoom = activeRoomIdRef.current === payload.chatRoomId && chatUser.chatRoomId === payload.chatRoomId
             const shouldIncreaseUnread =
               isNewMessageEvent &&
               isIncoming &&
-              !(activeUserIdRef.current === chatUser.userId && activeRoomIdRef.current === payload.chatRoomId)
+              !isActiveRoom
             const shouldClearUnread =
               isNewMessageEvent &&
-              activeUserIdRef.current === chatUser.userId &&
-              activeRoomIdRef.current === payload.chatRoomId
+              isActiveRoom
 
             const parsedContent = parseStoredMessageContent(payload.content)
 
@@ -269,7 +292,8 @@ function ChatDashboard() {
                 : shouldClearUnread
                   ? 0
                   : chatUser.unreadCount || 0,
-              roomType: payload.roomType || chatUser.roomType,
+              roomType: payload.roomType || chatUser.roomType || chatUser.type,
+              type: payload.roomType || chatUser.roomType || chatUser.type,
             }
           }),
         ),
@@ -281,7 +305,11 @@ function ChatDashboard() {
   const handleIncomingMessage = useCallback(
     async (payload) => {
       if (!payload?.chatRoomId) return
+      if (import.meta.env.DEV) {
+        console.debug('[socket] message received', payload.eventType || 'message', payload.chatRoomId)
+      }
       const isNewMessageEvent = ['message', 'groupMessage', 'messageForwarded'].includes(payload.eventType || 'message')
+      const payloadIsGroup = isGroupPayload(payload)
 
       const mappedMessage = toViewMessage(payload, user.userId)
 
@@ -314,20 +342,21 @@ function ChatDashboard() {
       updateSidebarForMessage(payload)
 
       if (payload.senderId !== user.userId && activeRoomIdRef.current === payload.chatRoomId && isNewMessageEvent) {
-        try {
-          await markRoomAsRead(payload.chatRoomId)
-          if (payload.id && !isGroupChat(activeUser)) {
-            sendReadEventRef.current({
-              messageId: payload.id,
-              senderId: payload.senderId,
-              receiverId: user.userId,
-            })
+        if (payload.id) {
+          const published = sendReadEventRef.current({
+            messageId: payload.id,
+            senderId: payload.senderId,
+            receiverId: payloadIsGroup ? null : user.userId,
+          })
+          if (published) {
             readAckedMessageIdsRef.current.add(payload.id)
+          } else {
+            void markRoomAsRead(payload.chatRoomId).catch(() => {})
           }
-        } catch {
-          // ignore transient read-receipt failures
+        } else {
+          void markRoomAsRead(payload.chatRoomId).catch(() => {})
         }
-      } else if (payload.senderId !== user.userId && payload.id && isNewMessageEvent) {
+      } else if (payload.senderId !== user.userId && payload.id && isNewMessageEvent && !payloadIsGroup) {
         sendDeliveryEventRef.current({ messageId: payload.id })
       }
 
@@ -345,7 +374,32 @@ function ChatDashboard() {
 
       shouldAutoScrollRef.current = activeRoomIdRef.current === payload.chatRoomId
     },
-    [activeUser, updateSidebarForMessage, user.userId],
+    [updateSidebarForMessage, user.userId],
+  )
+
+  const handleUserQueueMessage = useCallback(
+    (payload) => {
+      if (!payload?.chatRoomId) return
+      if (isGroupPayload(payload)) {
+        if (import.meta.env.DEV) {
+          console.debug('[socket] ignored group payload on user queue', payload.chatRoomId)
+        }
+        return
+      }
+      void handleIncomingMessage(payload)
+    },
+    [handleIncomingMessage],
+  )
+
+  const handleGroupMessage = useCallback(
+    (payload) => {
+      if (!payload?.chatRoomId) return
+      if (import.meta.env.DEV) {
+        console.log('Group message received:', payload)
+      }
+      void handleIncomingMessage(payload)
+    },
+    [handleIncomingMessage],
   )
 
   const sendDeliveryEventRef = useRef(() => false)
@@ -455,20 +509,31 @@ function ChatDashboard() {
     callSignalHandlerRef.current?.(payload)
   }, [])
 
+  const handleGroupCallEvent = useCallback((payload) => {
+    if (import.meta.env.DEV) {
+      console.log('[socket] group-call received', payload?.chatRoomId, payload?.type)
+    }
+    groupCallSignalHandlerRef.current?.(payload)
+  }, [])
+
   const handleRoomEvent = useCallback(() => {
     loadUsersRef.current(activeUserIdRef.current)
   }, [])
 
-  const { isConnected, sendMessage, sendTypingEvent, sendDeliveryEvent, sendReadEvent, sendCallSignal } = useChatSocket({
+  const { isConnected, sendMessage, sendTypingEvent, sendDeliveryEvent, sendReadEvent, sendCallSignal, sendGroupCallSignal } = useChatSocket({
     token,
-    onMessage: handleIncomingMessage,
+    onMessage: handleUserQueueMessage,
+    onGroupMessage: handleGroupMessage,
     onStatus: handleStatusEvent,
     onCall: handleCallEvent,
+    onGroupCall: handleGroupCallEvent,
     onTyping: handleTypingEvent,
     onReadReceipt: handleReadReceipt,
     onRoomEvent: handleRoomEvent,
     onPresence: handlePresenceEvent,
     onAuthError: () => logout({ notify: true }),
+    groupRoomIds,
+    groupCallRoomIds: groupRoomIds,
   })
 
   useEffect(() => {
@@ -481,6 +546,10 @@ function ChatDashboard() {
 
   const registerCallSignalHandler = useCallback((handler) => {
     callSignalHandlerRef.current = handler || (() => {})
+  }, [])
+
+  const registerGroupCallSignalHandler = useCallback((handler) => {
+    groupCallSignalHandlerRef.current = handler || (() => {})
   }, [])
 
   const { debounced: sendStopTyping } = useDebouncedCallback(() => {
@@ -565,7 +634,7 @@ function ChatDashboard() {
       setLoadingUsers(true)
       const [usersResult, profileResult] = await Promise.allSettled([fetchSidebarUsers(), fetchMyProfile()])
       const sidebarUsers = usersResult.status === 'fulfilled' ? usersResult.value : []
-      const sortedUsers = sortUsers(sidebarUsers)
+      const sortedUsers = sortUsers(sidebarUsers.map(normalizeChatDescriptor))
       setUsers(sortedUsers)
       if (profileResult.status === 'fulfilled') {
         setCurrentUserProfile(profileResult.value)
@@ -636,16 +705,18 @@ function ChatDashboard() {
 
   useEffect(() => {
     if (!activeUser || !activeRoomId || !user?.userId) return
-    if (isGroupChat(activeUser)) return
+    const isGroupConversation = isGroupChat(activeUser)
     const roomMessages = activeMessagesRef.current
     roomMessages.forEach((message) => {
       if (message.senderId === user.userId) return
-      if (!message.id || message.status === 'READ') return
+      if (!message.id) return
+      if (isGroupConversation && Array.isArray(message.seenBy) && message.seenBy.includes(user.userId)) return
+      if (!isGroupConversation && message.status === 'READ') return
       if (readAckedMessageIdsRef.current.has(message.id)) return
       const published = sendReadEventRef.current({
         messageId: message.id,
         senderId: message.senderId,
-        receiverId: user.userId,
+        receiverId: isGroupConversation ? null : user.userId,
       })
       if (published) {
         readAckedMessageIdsRef.current.add(message.id)
@@ -786,7 +857,7 @@ function ChatDashboard() {
     setUsers((prevUsers) =>
       sortUsers(
         prevUsers.map((chatUser) =>
-          chatUser.userId === activeUser.userId
+          chatUser.chatRoomId === activeRoomId
             ? {
                 ...chatUser,
                 lastMessagePreview: shortenPreview(mappedOptimistic.displayContent || attachmentMeta?.name || ''),
@@ -1073,7 +1144,9 @@ function ChatDashboard() {
       activeUser={activeUser}
       isSocketConnected={isConnected}
       sendCallSignal={sendCallSignal}
+      sendGroupCallSignal={sendGroupCallSignal}
       registerSignalHandler={registerCallSignalHandler}
+      registerGroupSignalHandler={registerGroupCallSignalHandler}
     >
       <main className="mx-auto min-h-screen supports-[height:100dvh]:min-h-[100dvh] max-w-7xl px-3 py-4 sm:px-6 sm:py-6">
         <section className="grid min-h-0 h-[calc(100vh-2rem)] sm:h-[calc(100vh-3rem)] supports-[height:100dvh]:h-[calc(100dvh-2rem)] sm:supports-[height:100dvh]:h-[calc(100dvh-3rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_14px_30px_rgba(2,20,20,0.12)] md:grid-cols-[320px_1fr] md:rounded-[28px] dark:border-slate-800 dark:bg-slate-950/70 dark:shadow-[0_14px_30px_rgba(0,0,0,0.55)]">
