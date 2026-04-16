@@ -26,6 +26,7 @@ import com.chatconnecting.chatconnecting.message.dto.ReadMessageRequest;
 import com.chatconnecting.chatconnecting.message.dto.ReadReceiptEvent;
 import com.chatconnecting.chatconnecting.message.dto.TypingEventRequest;
 import com.chatconnecting.chatconnecting.message.dto.TypingEventResponse;
+import com.chatconnecting.chatconnecting.notification.service.NotificationService;
 import com.chatconnecting.chatconnecting.user.User;
 import com.chatconnecting.chatconnecting.websocket.PresenceService;
 import java.io.IOException;
@@ -95,6 +96,7 @@ public class MessageService {
     private final HiddenMessageRepository hiddenMessageRepository;
     private final ChatService chatService;
     private final PresenceService presenceService;
+    private final NotificationService notificationService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional(readOnly = true)
@@ -185,6 +187,15 @@ public class MessageService {
             broadcastGroupMessage(room, sender, payload);
         } else {
             broadcastToRoom(room, MESSAGE_DESTINATION, payload);
+            // Send push notification if receiver is offline
+            if (receiver != null && !presenceService.isUserOnline(receiver.getEmail())) {
+                notificationService.sendOfflineNotification(
+                        receiver,
+                        sender.getName(),
+                        content,
+                        "newMessage"
+                );
+            }
         }
         return payload;
     }
@@ -478,10 +489,10 @@ public class MessageService {
         String normalizedEmoji = normalizeEmoji(emoji);
 
         MessageReaction reaction = messageReactionRepository.findByMessageIdAndUserIdAndEmoji(
-                        messageId,
-                        requester.getId(),
-                        normalizedEmoji
-                )
+                messageId,
+                requester.getId(),
+                normalizedEmoji
+        )
                 .orElseThrow(() -> new ResourceNotFoundException("Reaction not found"));
         messageReactionRepository.delete(reaction);
         messageReactionRepository.flush();
@@ -573,9 +584,9 @@ public class MessageService {
                 .reactions(message.getReactions().stream()
                         .sorted(Comparator.comparing(MessageReaction::getEmoji).thenComparing(reaction -> reaction.getUser().getId()))
                         .map(reaction -> MessageReactionResponse.builder()
-                                .userId(reaction.getUser().getId())
-                                .emoji(reaction.getEmoji())
-                                .build())
+                        .userId(reaction.getUser().getId())
+                        .emoji(reaction.getEmoji())
+                        .build())
                         .toList())
                 .build();
     }
@@ -596,9 +607,15 @@ public class MessageService {
     }
 
     private String resolveAttachmentKind(String contentType) {
-        if (contentType.startsWith("image/")) return "IMAGE";
-        if (contentType.startsWith("video/")) return "VIDEO";
-        if ("application/pdf".equals(contentType)) return "PDF";
+        if (contentType.startsWith("image/")) {
+            return "IMAGE";
+        }
+        if (contentType.startsWith("video/")) {
+            return "VIDEO";
+        }
+        if ("application/pdf".equals(contentType)) {
+            return "PDF";
+        }
         return "FILE";
     }
 

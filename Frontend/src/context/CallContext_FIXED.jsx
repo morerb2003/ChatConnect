@@ -241,8 +241,10 @@ export function CallProvider({
     try {
       WebRTCLogger.debug(MODULE_NAME, 'RequestingMediaDevices', { needsVideo })
 
-      // Use device-optimized constraints based on browser/platform
-      const constraints = BrowserCompat.getMediaConstraints(needsVideo)
+      const constraints = {
+        audio: MEDIA_CONSTRAINTS.audio,
+        video: needsVideo ? MEDIA_CONSTRAINTS.video : false,
+      }
 
       const stream = await RetryManager.executeWithRetry(
         () => navigator.mediaDevices.getUserMedia(constraints),
