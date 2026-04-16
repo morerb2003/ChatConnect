@@ -33,10 +33,10 @@ public class ChatWebSocketController {
             log.warn("Rejected chat.send: missing principal");
             throw new ForbiddenOperationException("Unauthorized websocket request");
         }
-        log.debug("Received chat.send from {} for receiver={} room={}",
+        log.debug("WebSocket event=chat.send principal={} chatRoomId={} receiverId={}",
                 principal.getName(),
-                request.getReceiverId(),
-                request.getChatRoomId());
+                request.getChatRoomId(),
+                request.getReceiverId());
         messageService.sendMessage(principal.getName(), request);
     }
 

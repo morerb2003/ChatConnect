@@ -47,6 +47,33 @@ export const getOrCreateRoom = async (participantId) => {
   }
 }
 
+export const createGroup = async ({ name, memberIds }) => {
+  try {
+    const response = await api.post('/chat/groups', { name, memberIds }, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to create group')
+  }
+}
+
+export const addGroupMembers = async (chatRoomId, memberIds) => {
+  try {
+    const response = await api.post(`/chat/groups/${chatRoomId}/members`, { memberIds }, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to add group members')
+  }
+}
+
+export const removeGroupMember = async (chatRoomId, memberId) => {
+  try {
+    const response = await api.delete(`/chat/groups/${chatRoomId}/members/${memberId}`, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to remove group member')
+  }
+}
+
 export const fetchRoomMessages = async (chatRoomId, page = 0, size = 30) => {
   try {
     const response = await api.get(
@@ -155,5 +182,56 @@ export const searchRoomMessages = async (chatRoomId, query, page = 0, size = 30)
     return response.data
   } catch (error) {
     attachUserMessage(error, 'Failed to search messages')
+  }
+}
+
+export const addMessageReaction = async (messageId, emoji) => {
+  try {
+    const response = await api.post(`/chat/messages/${messageId}/reactions`, { emoji }, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to add reaction')
+  }
+}
+
+export const removeMessageReaction = async (messageId, emoji) => {
+  try {
+    const response = await api.delete(`/chat/messages/${messageId}/reactions`, withAuth({
+      params: { emoji },
+    }))
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to remove reaction')
+  }
+}
+
+export const leaveGroup = async (chatRoomId) => {
+  try {
+    const response = await api.post(`/chat/groups/${chatRoomId}/leave`, null, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to leave group')
+  }
+}
+
+export const deleteGroup = async (chatRoomId) => {
+  try {
+    const response = await api.delete(`/chat/groups/${chatRoomId}`, withAuth())
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to delete group')
+  }
+}
+
+export const assignGroupAdmin = async (chatRoomId, adminId) => {
+  try {
+    const response = await api.post(
+      `/chat/groups/${chatRoomId}/admin`,
+      { adminId },
+      withAuth(),
+    )
+    return response.data
+  } catch (error) {
+    attachUserMessage(error, 'Failed to assign admin')
   }
 }

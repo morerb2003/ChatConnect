@@ -1,7 +1,6 @@
 package com.chatconnecting.chatconnecting.message.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -16,7 +15,6 @@ public class ChatMessageRequest {
 
     private Long chatRoomId;
 
-    @NotNull(message = "Receiver is required")
     private Long receiverId;
 
     @NotBlank(message = "Message content is required")
