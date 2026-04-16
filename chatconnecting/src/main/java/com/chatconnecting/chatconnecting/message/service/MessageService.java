@@ -58,6 +58,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("deprecation")
 public class MessageService {
 
     private static final Logger log = LoggerFactory.getLogger(MessageService.class);

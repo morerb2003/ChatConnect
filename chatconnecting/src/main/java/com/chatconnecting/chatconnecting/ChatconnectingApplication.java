@@ -1,12 +1,13 @@
 package com.chatconnecting.chatconnecting;
 
+import java.net.InetAddress;
+import java.util.Arrays;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.core.env.Environment;
-import java.net.InetAddress;
-import java.util.Arrays;
 
 @SpringBootApplication
 public class ChatconnectingApplication {
@@ -37,6 +38,7 @@ public class ChatconnectingApplication {
         String mysqlUrl = env.getProperty("spring.datasource.url", "Not configured");
         logger.info("Database URL: {}", mysqlUrl);
         logger.info("Database User: {}", env.getProperty("spring.datasource.username", "Not configured"));
+        logger.info("Application started successfully!");
     }
 
 }
