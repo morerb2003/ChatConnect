@@ -135,7 +135,8 @@ export const createChatSocketClient = ({
   debug = false,
 }) => {
   // Get WebSocket URL from environment or use localhost fallback
-  const wsBaseUrl = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws'
+  // Use normalizeWebSocketUrl to convert wss:// to https://
+  const wsBaseUrl = normalizeWebSocketUrl(import.meta.env.VITE_WS_URL) || 'http://localhost:8080/ws'
   
   // Validate URL format (must be http:// or https://, NOT wss://)
   if (!wsBaseUrl.startsWith('http://') && !wsBaseUrl.startsWith('https://')) {
