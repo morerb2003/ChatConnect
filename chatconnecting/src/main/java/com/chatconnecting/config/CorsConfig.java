@@ -9,9 +9,9 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
- * CORS Configuration for handling cross-origin requests
- * Reads allowed origins from application.properties (app.cors.allowed-origins)
- * Allows the frontend (Vercel, Railway, localhost) to communicate with this backend
+ * CORS Configuration for handling cross-origin requests Reads allowed origins
+ * from application.properties (app.cors.allowed-origins) Allows the frontend
+ * (Vercel, Railway, localhost) to communicate with this backend
  */
 @Configuration
 public class CorsConfig {
