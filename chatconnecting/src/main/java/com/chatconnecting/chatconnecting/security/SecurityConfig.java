@@ -35,7 +35,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserDetailsService userDetailsService;
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,https://chat-connect-ochre.vercel.app}")
     private String allowedOrigins;
 
     @Bean
