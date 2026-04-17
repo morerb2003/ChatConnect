@@ -38,6 +38,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
+@SuppressWarnings("deprecation")
 public class ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);

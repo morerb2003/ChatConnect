@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Avatar from './Avatar'
+import CallControls from './CallControls'
 import { useCall } from '../../context/CallContext'
 import './CallModal.css'
 
@@ -8,37 +9,6 @@ const formatDuration = (seconds) => {
   const ss = String(seconds % 60).padStart(2, '0')
   return `${mm}:${ss}`
 }
-
-// Icon Components for better UI/UX
-const MicIcon = ({ muted }) => (
-  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-    {muted ? (
-      <>
-        <path d="M9.172 15.172a4 4 0 015.656 0M9 10a3 3 0 116 0 3 3 0 01-6 0z" fill="none" stroke="currentColor" strokeWidth="2"/>
-        <path d="M9.172 15.172l5.656-5.656M19 19H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      </>
-    ) : (
-      <path d="M12 14a2 2 0 100-4 2 2 0 000 4z" fill="currentColor"/>
-    )}
-  </svg>
-)
-
-const CameraIcon = ({ disabled }) => (
-  <svg className="w-6 h-6" fill={disabled ? "none" : "currentColor"} viewBox="0 0 24 24">
-    {disabled ? (
-      <path d="M9 3.75H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H15M9 3.75V1.5m0 2.25v2.25M3 3l20 20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    ) : (
-      <path d="M9 3.75H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H15M9 3.75V1.5m0 2.25v2.25m4.5-5.5h3.75A2.25 2.25 0 0121 6v12a2.25 2.25 0 01-2.25 2.25H9" stroke="currentColor" strokeWidth="1.5"/>
-    )}
-  </svg>
-)
-
-const EndCallIcon = () => (
-  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-    <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" opacity="0.5"/>
-    <line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-  </svg>
-)
 
 // StreamTile component for displaying individual video streams
 function StreamTile({ label, stream, callMode, muted = false, isMainVideo = false }) {
@@ -308,50 +278,15 @@ function CallModal({ activeUser }) {
               )}
             </div>
 
-            {/* Advanced Control Buttons */}
-            <div className="flex items-center justify-center gap-3 px-6 py-4 border-t border-slate-700/50 bg-gradient-to-r from-black/40 via-slate-900/20 to-black/40 backdrop-blur-md flex-shrink-0">
-              
-              {/* Mute Button */}
-              <button
-                type="button"
-                onClick={toggleMute}
-                className={`flex items-center justify-center p-4 rounded-full font-bold text-white transition-all duration-200 border-2 group ${
-                  isMuted
-                    ? 'bg-red-500/30 border-red-500/60 hover:bg-red-500/50 hover:border-red-400 shadow-lg shadow-red-500/30'
-                    : 'bg-blue-500/30 border-blue-500/60 hover:bg-blue-500/50 hover:border-blue-400 shadow-lg shadow-blue-500/30'
-                } active:scale-90 hover:scale-110`}
-                title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-              >
-                <span className="text-lg group-hover:scale-125 transition-transform">
-                  {isMuted ? '🔇' : '🎤'}
-                </span>
-              </button>
-
-              {/* Camera Button */}
-              <button
-                type="button"
-                onClick={() => setIsCameraOn(!isCameraOn)}
-                className={`flex items-center justify-center p-4 rounded-full font-bold text-white transition-all duration-200 border-2 group ${
-                  isCameraOn
-                    ? 'bg-emerald-500/30 border-emerald-500/60 hover:bg-emerald-500/50 hover:border-emerald-400 shadow-lg shadow-emerald-500/30'
-                    : 'bg-orange-500/30 border-orange-500/60 hover:bg-orange-500/50 hover:border-orange-400 shadow-lg shadow-orange-500/30'
-                } active:scale-90 hover:scale-110`}
-                title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
-              >
-                <span className="text-lg group-hover:scale-125 transition-transform">
-                  {isCameraOn ? '📷' : '🚫'}
-                </span>
-              </button>
-
-              {/* End Call Button */}
-              <button
-                type="button"
-                onClick={endCall}
-                className="flex items-center justify-center p-4 rounded-full font-bold text-white bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 border-2 border-red-600/80 hover:border-red-500 shadow-lg shadow-red-500/50 transition-all duration-200 active:scale-90 hover:scale-110 group"
-                title="End call"
-              >
-                <span className="text-lg group-hover:scale-125 transition-transform">📞</span>
-              </button>
+            {/* Modern Video Call Controls */}
+            <div className="flex-shrink-0 border-t border-slate-700/50">
+              <CallControls
+                isMuted={isMuted}
+                onToggleMute={toggleMute}
+                isCameraOn={isCameraOn}
+                onToggleCamera={() => setIsCameraOn(!isCameraOn)}
+                onEndCall={endCall}
+              />
             </div>
           </div>
         </div>
