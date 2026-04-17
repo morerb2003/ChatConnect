@@ -12,4 +12,17 @@ export default defineConfig({
   define: {
     global: "globalThis",
   },
+  build: {
+    chunkSizeWarningLimit: 1500, // Suppress chunk size warning for 1.3 MB bundle
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split vendor libraries for better caching
+          react: ['react', 'react-dom', 'react-router-dom'],
+          stomp: ['@stomp/stompjs', 'sockjs-client'],
+          firebase: ['firebase/app', 'firebase/messaging'],
+        },
+      },
+    },
+  },
 });
